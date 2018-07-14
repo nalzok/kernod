@@ -29,13 +29,7 @@ int main(void) {
             continue;
         }
 
-        khttp_head(&req, kresps[KRESP_STATUS],
-                   "%s", khttps[KHTTP_200]);
-        khttp_head(&req, kresps[KRESP_CONTENT_TYPE],
-                   "%s", kmimetypes[req.mime]);
-        khttp_body(&req);
         dispatch(&req);
-        khttp_free(&req);
     }
 
     khttp_fcgi_free(fcgi);
@@ -47,9 +41,6 @@ static enum khttp sanitise(struct kreq *req) {
         return KHTTP_404;
     } else if (KMIME_TEXT_HTML != req->mime) {
         return KHTTP_404;
-    } else if (KMETHOD_GET != req->method
-               && !(KMETHOD_POST == req->method && PAGE_LOGIN == req->page)) {
-        return KHTTP_405;
     }
     return KHTTP_200;
 }
