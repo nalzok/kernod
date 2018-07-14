@@ -79,7 +79,6 @@ static void render_login_form(struct khtmlreq *htmlreq) {
     khtml_elem(htmlreq, KELEM_P);
     khtml_attr(htmlreq, KELEM_FORM,
                KATTR_METHOD, "post",
-               KATTR_ENCTYPE, "multipart/form-data",
                KATTR_ACTION, "login",
                KATTR__MAX);
     khtml_elem(htmlreq, KELEM_FIELDSET);
