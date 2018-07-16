@@ -5,15 +5,28 @@
 #ifndef KERNOD_FLASH_H
 #define KERNOD_FLASH_H
 
-struct messages {
-    struct messages *next;
-    const char *message;
+#include <sys/types.h> /* size_t, ssize_t */
+#include <stdarg.h> /* va_list */
+#include <stddef.h> /* NULL */
+#include <stdint.h> /* int64_t */
+#include <kcgi.h>
+#include <kcgihtml.h>
+#include <stddef.h>
+#include <stdbool.h>
+
+
+enum msg_type {
+    MSG_TYPE_INFO,
+    MSG_TYPE_WARNING,
+    MSG_TYPE_ERROR,
+    MSG_TYPE_CRITICAL,
+    MSG_TYPE__MAX
 };
 
-extern struct messages *message_queue;
+extern struct message *message_queue;
 
-extern void flash(const char *message);
+extern bool flash(const char *msg, enum msg_type type);
 
-extern void get_flashed_messages(void);
+extern void get_flashed_messages(struct khtmlreq *htmlreq);
 
 #endif //KERNOD_FLASH_H

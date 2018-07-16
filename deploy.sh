@@ -2,6 +2,7 @@
 
 mkdir -p /usr/local/var/www/fcgi-bin /usr/local/var/www/run
 install -m 0555 cmake-build-debug/kernod /usr/local/var/www/fcgi-bin
+cp -R static /usr/local/var/www
 echo $LOGIN_PASSWD | sudo -S : 2>/dev/null  # do nothing
 sudo /usr/local/sbin/kfcgi -d -r \
     -s /usr/local/var/www/run/httpd.sock \

@@ -5,14 +5,14 @@
 #ifndef KERNOD_PROCESS_REGISTER_H
 #define KERNOD_PROCESS_REGISTER_H
 
-enum stmt {
+enum register_stmt {
     STMT_CREATE_TABLE,
     STMT_INSERT_USER,
     STMT_SELECT_USER,
     STMT__MAX
 };
 
-enum reg {
+enum register_state {
     REG_SUCCESS,
 };
 

@@ -3,8 +3,7 @@
 //
 
 #include "process_index.h"
-
-#include <kcgihtml.h>
+#include "../utils/flash.h"
 
 extern enum khttp process_index(struct kreq *req) {
     khttp_head(req, kresps[KRESP_STATUS],
@@ -15,6 +14,7 @@ extern enum khttp process_index(struct kreq *req) {
 
     struct khtmlreq htmlreq;
     khtml_open(&htmlreq, req, KHTML_PRETTY);
+    get_flashed_messages(&htmlreq);
     khtml_elem(&htmlreq, KELEM_P);
     khtml_puts(&htmlreq, "hello, world");
     khtml_close(&htmlreq);

@@ -10,5 +10,5 @@ target_sources(kernod PRIVATE auth/process_login.c auth/process_login.h)
 target_sources(kernod PRIVATE auth/process_register.c auth/process_register.h)
 target_sources(kernod PRIVATE utils/flash.c utils/flash.h)
 
-target_compile_options(kernod PRIVATE -Wall -Wextra -pedantic -c)
+target_compile_options(kernod PRIVATE -Wall -Wextra -Werror -pedantic -Wstrict-prototypes -c)
 target_link_libraries(kernod kcgi kcgihtml ksql sqlite3 sodium z)

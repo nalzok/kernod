@@ -3,19 +3,19 @@
 //
 
 #include "process_login.h"
+#include "../utils/flash.h"
 #include "../config.h"
 
-#include <kcgihtml.h>
 #include <ksql.h>
 #include <string.h>
 
 
-enum stmt {
+enum login_stmt {
     STMT_SELECT_PASSWORD,
     STMT__MAX
 };
 
-enum login {
+enum login_state {
     LOGIN_SUCCESS,
     LOGIN_INVALID_USERNAME,
     LOGIN_INVALID_PASSWORD,
@@ -27,7 +27,7 @@ static const char *const stmts[STMT__MAX] = {
         "WHERE username = ?",
 };
 
-static enum login validate_login_form(struct kreq *req);
+static enum login_state validate_login_form(struct kreq *req);
 
 static void render_login_form(struct khtmlreq *htmlreq);
 
@@ -43,6 +43,7 @@ extern enum khttp process_login(struct kreq *req) {
 
         struct khtmlreq htmlreq;
         khtml_open(&htmlreq, req, KHTML_PRETTY);
+        get_flashed_messages(&htmlreq);
         khtml_elem(&htmlreq, KELEM_P);
         khtml_puts(&htmlreq, "Please login\n");
         render_login_form(&htmlreq);
@@ -120,7 +121,7 @@ static void render_login_form(struct khtmlreq *htmlreq) {
 }
 
 
-static enum login validate_login_form(struct kreq *req) {
+static enum login_state validate_login_form(struct kreq *req) {
 
     struct ksqlcfg cfg;
     struct ksql *sql;
@@ -141,6 +142,7 @@ static enum login validate_login_form(struct kreq *req) {
     if (!pusername) {
         ksql_stmt_free(stmt);
         ksql_free(sql);
+        flash("Invalid username", MSG_TYPE_ERROR);
         return LOGIN_INVALID_USERNAME;
     }
 
@@ -148,8 +150,12 @@ static enum login validate_login_form(struct kreq *req) {
 
     ksql_stmt_step(stmt);
 
-    const char *hashed;
-    ksql_result_str(stmt, &hashed, 0);
+    const char *hashed_temp;
+    ksql_result_str(stmt, &hashed_temp, 0);
+    char *hashed;
+    if (NULL == (hashed = strdup(hashed_temp))) {
+        // TODO: error handling
+    }
 
     ksql_stmt_free(stmt);
     ksql_free(sql);
@@ -157,12 +163,15 @@ static enum login validate_login_form(struct kreq *req) {
     struct kpair *ppassword;
     ppassword = req->fieldmap[KEY_PASSWORD];
     if (!ppassword) {
+        flash("Invalid password", MSG_TYPE_ERROR);
         return LOGIN_INVALID_PASSWORD;
     }
 
     if (strcmp(ppassword->parsed.s, hashed) == 0) {
+        flash("Welcome!", MSG_TYPE_INFO);
         return LOGIN_SUCCESS;
     } else {
+        flash("Wrong password", MSG_TYPE_ERROR);
         return LOGIN_WRONG_PASSWORD;
     }
 }
