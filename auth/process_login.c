@@ -4,10 +4,14 @@
 
 #include "process_login.h"
 #include "../utils/flash.h"
+#include "../utils/http_body_open.h"
+#include "../utils/html_init.h"
 #include "../config.h"
 
 #include <ksql.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 
 enum login_stmt {
@@ -17,9 +21,7 @@ enum login_stmt {
 
 enum login_state {
     LOGIN_SUCCESS,
-    LOGIN_INVALID_USERNAME,
-    LOGIN_INVALID_PASSWORD,
-    LOGIN_WRONG_PASSWORD,
+    LOGIN_FAILURE,
 };
 
 static const char *const stmts[STMT__MAX] = {
@@ -33,45 +35,43 @@ static void render_login_form(struct khtmlreq *htmlreq);
 
 
 extern enum khttp process_login(struct kreq *req) {
+    switch (req->method) {
 
-    if (KMETHOD_GET == req->method) {
-        khttp_head(req, kresps[KRESP_STATUS],
-                   "%s", khttps[KHTTP_200]);
-        khttp_head(req, kresps[KRESP_CONTENT_TYPE],
-                   "%s", kmimetypes[req->mime]);
-        khttp_body(req);
+        case KMETHOD_GET:
+            http_body_open(req, KHTTP_200);
 
-        struct khtmlreq htmlreq;
-        khtml_open(&htmlreq, req, KHTML_PRETTY);
-        get_flashed_messages(&htmlreq);
-        khtml_elem(&htmlreq, KELEM_P);
-        khtml_puts(&htmlreq, "Please login\n");
-        render_login_form(&htmlreq);
-        khtml_closeelem(&htmlreq, 0);
-        khtml_close(&htmlreq);
+            struct khtmlreq htmlreq;
+            khtml_open(&htmlreq, req, KHTML_PRETTY);
+            html_init(&htmlreq);
 
-        khttp_free(req);
-        return KHTTP_200;
+            khtml_elem(&htmlreq, KELEM_H1);
+            khtml_puts(&htmlreq, "Please login");
+            khtml_closeelem(&htmlreq, 1);
+            render_login_form(&htmlreq);
 
-    } else if (KMETHOD_POST == req->method) {
-        switch (validate_login_form(req)) {
-            default:
+            khtml_closeelem(&htmlreq, 0);
+            khtml_close(&htmlreq);
+
+            khttp_free(req);
+            return KHTTP_200;
+
+        case KMETHOD_POST:
+            if (validate_login_form(req) == LOGIN_SUCCESS) {
                 khttp_head(req, kresps[KRESP_LOCATION],
                            "%s", pages[PAGE_INDEX]);
-                khttp_body(req);
-                khttp_free(req);
-                return KHTTP_302;
-        }
+            } else {
+                khttp_head(req, kresps[KRESP_LOCATION],
+                           "%s", pages[PAGE_LOGIN]);
+            }
+            khttp_body(req);
+            khttp_free(req);
+            return KHTTP_302;
 
-    } else {
-        khttp_head(req, kresps[KRESP_STATUS],
-                   "%s", khttps[KHTTP_405]);
-        khttp_head(req, kresps[KRESP_CONTENT_TYPE],
-                   "%s", kmimetypes[KMIME_TEXT_HTML]);
-        khttp_puts(req, khttps[KHTTP_405]);
-        khttp_body(req);
-        khttp_free(req);
-        return KHTTP_405;
+        default:
+            http_body_open(req, KHTTP_405);
+            khttp_puts(req, khttps[KHTTP_405]);
+            khttp_free(req);
+            return KHTTP_405;
     }
 }
 
@@ -122,10 +122,9 @@ static void render_login_form(struct khtmlreq *htmlreq) {
 
 
 static enum login_state validate_login_form(struct kreq *req) {
-
     struct ksqlcfg cfg;
     struct ksql *sql;
-    size_t stmtsz = sizeof stmts / sizeof stmts[0];
+    size_t stmtsz = STMT__MAX;
 
     ksql_cfg_defaults(&cfg);
     cfg.stmts.stmts = stmts;
@@ -138,40 +137,53 @@ static enum login_state validate_login_form(struct kreq *req) {
     ksql_stmt_alloc(sql, &stmt, NULL, STMT_SELECT_PASSWORD);
 
     struct kpair *pusername;
-    pusername = req->fieldmap[KEY_USERNAME];
-    if (!pusername) {
-        ksql_stmt_free(stmt);
-        ksql_free(sql);
-        flash("Invalid username", MSG_TYPE_ERROR);
-        return LOGIN_INVALID_USERNAME;
+    if (NULL != (pusername = req->fieldmap[KEY_USERNAME])) {
+        ksql_bind_str(stmt, 0, pusername->parsed.s);
+    } else if (req->fieldnmap[KEY_USERNAME]) {
+        flash("Invalid username", MSG_TYPE_DANGER);
+        goto out;
+    } else {
+        flash("Username not provided", MSG_TYPE_DANGER);
+        goto out;
     }
 
-    ksql_bind_str(stmt, 0, pusername->parsed.s);
-
-    ksql_stmt_step(stmt);
+    if (KSQL_ROW != ksql_stmt_step(stmt)) {
+        flash("User doesn't exist", MSG_TYPE_DANGER);
+        goto out;
+    }
 
     const char *hashed_temp;
     ksql_result_str(stmt, &hashed_temp, 0);
     char *hashed;
     if (NULL == (hashed = strdup(hashed_temp))) {
-        // TODO: error handling
+        ksql_stmt_free(stmt);
+        ksql_free(sql);
+        perror("strdup");
+        exit(EXIT_FAILURE);
     }
 
     ksql_stmt_free(stmt);
     ksql_free(sql);
 
     struct kpair *ppassword;
-    ppassword = req->fieldmap[KEY_PASSWORD];
-    if (!ppassword) {
-        flash("Invalid password", MSG_TYPE_ERROR);
-        return LOGIN_INVALID_PASSWORD;
+    if (NULL != (ppassword = req->fieldmap[KEY_PASSWORD])) {
+        if (0 == strcmp(ppassword->parsed.s, hashed)) {
+            flash("Welcome!", MSG_TYPE_SUCCESS);
+            return LOGIN_SUCCESS;
+        } else {
+            flash("Wrong password", MSG_TYPE_DANGER);
+            return LOGIN_FAILURE;
+        }
+    } else if (req->fieldnmap[KEY_PASSWORD]) {
+        flash("Invalid password", MSG_TYPE_DANGER);
+        return LOGIN_FAILURE;
+    } else {
+        flash("Password not provided", MSG_TYPE_DANGER);
+        return LOGIN_FAILURE;
     }
 
-    if (strcmp(ppassword->parsed.s, hashed) == 0) {
-        flash("Welcome!", MSG_TYPE_INFO);
-        return LOGIN_SUCCESS;
-    } else {
-        flash("Wrong password", MSG_TYPE_ERROR);
-        return LOGIN_WRONG_PASSWORD;
-    }
+    out:
+    ksql_stmt_free(stmt);
+    ksql_free(sql);
+    return LOGIN_FAILURE;
 }

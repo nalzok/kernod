@@ -9,10 +9,10 @@
 
 
 static const char *const msg_class[MSG_TYPE__MAX] = {
-        "info",
-        "warning",
-        "error",
-        "critical"
+        "flash flash-success",
+        "flash flash-danger",
+        "flash flash-warning",
+        "flash flash-info"
 };
 
 struct message {
@@ -58,5 +58,8 @@ extern void get_flashed_messages(struct khtmlreq *htmlreq) {
         free(pmessage);
     }
 
-    khtml_closeto(htmlreq, pos);
+    /* this is necessary due to a bug of kcgihtml */
+    if (pos != khtml_elemat(htmlreq)) {
+        khtml_closeto(htmlreq, pos);
+    }
 }

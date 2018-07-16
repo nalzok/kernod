@@ -5,6 +5,13 @@
 #ifndef KERNOD_PROCESS_REGISTER_H
 #define KERNOD_PROCESS_REGISTER_H
 
+#include <sys/types.h> /* size_t, ssize_t */
+#include <stdarg.h> /* va_list */
+#include <stddef.h> /* NULL */
+#include <stdint.h> /* int64_t */
+#include <kcgi.h>
+
+
 enum register_stmt {
     STMT_CREATE_TABLE,
     STMT_INSERT_USER,
@@ -26,5 +33,7 @@ static const char *const stmts[STMT__MAX] = {
         "INSERT INTO users(username, password) VALUES(?, ?)",
         "SELECT username, password FROM users",
 };
+
+extern enum khttp process_register(struct kreq *req);
 
 #endif //KERNOD_PROCESS_REGISTER_H

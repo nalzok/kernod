@@ -16,10 +16,10 @@
 
 
 enum msg_type {
-    MSG_TYPE_INFO,
+    MSG_TYPE_SUCCESS,
+    MSG_TYPE_DANGER,
     MSG_TYPE_WARNING,
-    MSG_TYPE_ERROR,
-    MSG_TYPE_CRITICAL,
+    MSG_TYPE_INFO,
     MSG_TYPE__MAX
 };
 
