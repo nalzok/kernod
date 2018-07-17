@@ -3,9 +3,9 @@
 //
 
 #include "process_index.h"
-#include "../utils/flash.h"
-#include "../utils/http_body_open.h"
-#include "../utils/html_init.h"
+#include "../../utils/flash.h"
+#include "../../utils/http_body_open.h"
+#include "../../utils/html_init.h"
 
 
 extern enum khttp process_index(struct kreq *req) {

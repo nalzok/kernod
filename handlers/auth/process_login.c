@@ -3,25 +3,24 @@
 //
 
 #include "process_login.h"
-#include "../utils/flash.h"
-#include "../utils/http_body_open.h"
-#include "../utils/html_init.h"
-#include "../config.h"
+#include "../../utils/flash.h"
+#include "../../utils/http_body_open.h"
+#include "../../utils/html_init.h"
+#include "../../config.h"
 
 #include <ksql.h>
+#include <sodium.h>
 #include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
 
-
-enum login_stmt {
-    STMT_SELECT_PASSWORD,
-    STMT__MAX
-};
 
 enum login_state {
     LOGIN_SUCCESS,
     LOGIN_FAILURE,
+};
+
+enum login_stmt {
+    STMT_SELECT_PASSWORD,
+    STMT__MAX
 };
 
 static const char *const stmts[STMT__MAX] = {
@@ -77,7 +76,10 @@ extern enum khttp process_login(struct kreq *req) {
 
 
 static void render_login_form(struct khtmlreq *htmlreq) {
+    size_t pos = khtml_elemat(htmlreq);
+
     khtml_elem(htmlreq, KELEM_P);
+
     khtml_attr(htmlreq, KELEM_FORM,
                KATTR_METHOD, "post",
                KATTR_ACTION, "login",
@@ -87,7 +89,6 @@ static void render_login_form(struct khtmlreq *htmlreq) {
     khtml_puts(htmlreq, "Login");
     khtml_closeelem(htmlreq, 1);
 
-    khtml_elem(htmlreq, KELEM_P);
     khtml_attr(htmlreq, KELEM_LABEL,
                KATTR_FOR, "login-username",
                KATTR__MAX);
@@ -98,9 +99,7 @@ static void render_login_form(struct khtmlreq *htmlreq) {
                KATTR_ID, "login-username",
                KATTR_NAME, keys[KEY_USERNAME].name,
                KATTR__MAX);
-    khtml_closeelem(htmlreq, 1);
 
-    khtml_elem(htmlreq, KELEM_P);
     khtml_attr(htmlreq, KELEM_LABEL,
                KATTR_FOR, "login-password",
                KATTR__MAX);
@@ -111,24 +110,26 @@ static void render_login_form(struct khtmlreq *htmlreq) {
                KATTR_ID, "login-password",
                KATTR_NAME, keys[KEY_PASSWORD].name,
                KATTR__MAX);
-    khtml_closeelem(htmlreq, 1);
 
-    khtml_elem(htmlreq, KELEM_P);
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "submit",
                KATTR__MAX);
-    khtml_closeelem(htmlreq, 1);
+
+    /* this is necessary due to a bug of kcgihtml */
+    if (pos != khtml_elemat(htmlreq)) {
+        khtml_closeto(htmlreq, pos);
+    }
 }
 
 
 static enum login_state validate_login_form(struct kreq *req) {
     struct ksqlcfg cfg;
     struct ksql *sql;
-    size_t stmtsz = STMT__MAX;
 
     ksql_cfg_defaults(&cfg);
+    cfg.flags |= KSQL_FOREIGN_KEYS;
     cfg.stmts.stmts = stmts;
-    cfg.stmts.stmtsz = stmtsz;
+    cfg.stmts.stmtsz = STMT__MAX;
 
     sql = ksql_alloc_child(&cfg, NULL, NULL);
     ksql_open(sql, "kernod.sqlite");
@@ -152,10 +153,10 @@ static enum login_state validate_login_form(struct kreq *req) {
         goto out;
     }
 
-    const char *hashed_temp;
-    ksql_result_str(stmt, &hashed_temp, 0);
+    const char *hashed_volatile;
     char *hashed;
-    if (NULL == (hashed = strdup(hashed_temp))) {
+    ksql_result_str(stmt, &hashed_volatile, 0);
+    if (NULL == (hashed = strdup(hashed_volatile))) {
         ksql_stmt_free(stmt);
         ksql_free(sql);
         perror("strdup");
@@ -167,7 +168,9 @@ static enum login_state validate_login_form(struct kreq *req) {
 
     struct kpair *ppassword;
     if (NULL != (ppassword = req->fieldmap[KEY_PASSWORD])) {
-        if (0 == strcmp(ppassword->parsed.s, hashed)) {
+        if (0 == crypto_pwhash_str_verify(hashed, // call sodium_init() first
+                                          ppassword->parsed.s,
+                                          strlen(ppassword->parsed.s))) {
             flash("Welcome!", MSG_TYPE_SUCCESS);
             return LOGIN_SUCCESS;
         } else {

@@ -1,9 +1,13 @@
-#include "main.h"
-#include "index/process_index.h"
-#include "auth/process_login.h"
+#include "handlers/index/process_index.h"
+#include "handlers/auth/process_login.h"
+#include "config.h"
 
 #include <stdlib.h>
 
+
+static enum khttp sanitise(struct kreq *req);
+
+static enum khttp dispatch(struct kreq *req);
 
 int main(void) {
     struct kreq req;
