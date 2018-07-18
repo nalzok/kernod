@@ -1,8 +1,10 @@
 #include "handlers/index/process_index.h"
-#include "handlers/auth/process_login.h"
+#include "handlers/auth/handle_login.h"
+#include "handlers/auth/handle_register.h"
 #include "config.h"
 
 #include <stdlib.h>
+#include <assert.h>
 
 
 static enum khttp sanitise(struct kreq *req);
@@ -54,8 +56,11 @@ static enum khttp dispatch(struct kreq *req) {
         case PAGE_INDEX:
             return process_index(req);
         case PAGE_LOGIN:
-            return process_login(req);
+            return handle_login(req);
+        case PAGE_REGISTER:
+            return handle_register(req);
         default:
+            assert(0);
             return KHTTP_404;
     }
 }

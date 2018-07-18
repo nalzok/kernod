@@ -2,8 +2,8 @@
 // Created by 孙庆耀 on 2018/7/14.
 //
 
-#ifndef KERNOD_PROCESS_REGISTER_H
-#define KERNOD_PROCESS_REGISTER_H
+#ifndef KERNOD_HANDLE_REGISTER_H
+#define KERNOD_HANDLE_REGISTER_H
 
 #include <sys/types.h> /* size_t, ssize_t */
 #include <stdarg.h> /* va_list */
@@ -12,6 +12,6 @@
 #include <kcgi.h>
 
 
-extern enum khttp process_register(struct kreq *req);
+extern enum khttp handle_register(struct kreq *req);
 
-#endif //KERNOD_PROCESS_REGISTER_H
+#endif //KERNOD_HANDLE_REGISTER_H

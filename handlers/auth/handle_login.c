@@ -2,7 +2,7 @@
 // Created by 孙庆耀 on 2018/7/10.
 //
 
-#include "process_login.h"
+#include "handle_login.h"
 #include "../../utils/flash.h"
 #include "../../utils/http_body_open.h"
 #include "../../utils/html_init.h"
@@ -28,12 +28,12 @@ static const char *const stmts[STMT__MAX] = {
         "WHERE username = ?",
 };
 
-static enum login_state validate_login_form(struct kreq *req);
-
 static void render_login_form(struct khtmlreq *htmlreq);
 
+static enum login_state validate_login_form(struct kreq *req);
 
-extern enum khttp process_login(struct kreq *req) {
+
+extern enum khttp handle_login(struct kreq *req) {
     switch (req->method) {
 
         case KMETHOD_GET:
@@ -55,7 +55,7 @@ extern enum khttp process_login(struct kreq *req) {
             return KHTTP_200;
 
         case KMETHOD_POST:
-            if (validate_login_form(req) == LOGIN_SUCCESS) {
+            if (LOGIN_SUCCESS == validate_login_form(req)) {
                 khttp_head(req, kresps[KRESP_LOCATION],
                            "%s", pages[PAGE_INDEX]);
             } else {
@@ -77,8 +77,6 @@ extern enum khttp process_login(struct kreq *req) {
 
 static void render_login_form(struct khtmlreq *htmlreq) {
     size_t pos = khtml_elemat(htmlreq);
-
-    khtml_elem(htmlreq, KELEM_P);
 
     khtml_attr(htmlreq, KELEM_FORM,
                KATTR_METHOD, "post",
@@ -113,6 +111,7 @@ static void render_login_form(struct khtmlreq *htmlreq) {
 
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "submit",
+               KATTR_VALUE, "Submit",
                KATTR__MAX);
 
     /* this is necessary due to a bug of kcgihtml */
@@ -168,8 +167,11 @@ static enum login_state validate_login_form(struct kreq *req) {
 
     struct kpair *ppassword;
     if (NULL != (ppassword = req->fieldmap[KEY_PASSWORD])) {
-        if (0 == crypto_pwhash_str_verify(hashed, // call sodium_init() first
-                                          ppassword->parsed.s,
+        if (-1 == sodium_init()) {
+            flash("libsodium error", MSG_TYPE_DANGER);
+            return LOGIN_FAILURE;
+        }
+        if (0 == crypto_pwhash_str_verify(hashed, ppassword->parsed.s,
                                           strlen(ppassword->parsed.s))) {
             flash("Welcome!", MSG_TYPE_SUCCESS);
             return LOGIN_SUCCESS;
