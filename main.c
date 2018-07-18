@@ -1,6 +1,4 @@
-#include "handlers/index/process_index.h"
-#include "handlers/auth/handle_login.h"
-#include "handlers/auth/handle_register.h"
+#include "handlers/handlers.h"
 #include "config.h"
 
 #include <stdlib.h>
@@ -15,20 +13,20 @@ int main(void) {
     struct kreq req;
     struct kfcgi *fcgi;
 
-    if (KCGI_OK != khttp_fcgi_init(&fcgi, keys, KEY__MAX,
-                                   pages, PAGE__MAX, PAGE_INDEX)) {
+    if (khttp_fcgi_init(&fcgi, keys, KEY__MAX,
+                        pages, PAGE__MAX, PAGE_INDEX) != KCGI_OK) {
         return EXIT_FAILURE;
     }
 
-    while (KCGI_OK == khttp_fcgi_parse(fcgi, &req)) {
+    while (khttp_fcgi_parse(fcgi, &req) == KCGI_OK) {
         enum khttp er;
-        if (KHTTP_200 != (er = sanitise(&req))) {
+        if ((er = sanitise(&req)) != KHTTP_200) {
             khttp_head(&req, kresps[KRESP_STATUS],
                        "%s", khttps[er]);
             khttp_head(&req, kresps[KRESP_CONTENT_TYPE],
                        "%s", kmimetypes[KMIME_TEXT_HTML]);
             khttp_body(&req);
-            if (KMIME_TEXT_HTML == req.mime) {
+            if (req.mime == KMIME_TEXT_HTML) {
                 khttp_puts(&req, "Could not service content.");
             }
             khttp_free(&req);
@@ -43,9 +41,9 @@ int main(void) {
 }
 
 static enum khttp sanitise(struct kreq *req) {
-    if (PAGE__MAX == req->page) {
+    if (req->page == PAGE__MAX) {
         return KHTTP_404;
-    } else if (KMIME_TEXT_HTML != req->mime) {
+    } else if (req->mime != KMIME_TEXT_HTML) {
         return KHTTP_404;
     }
     return KHTTP_200;
@@ -54,7 +52,7 @@ static enum khttp sanitise(struct kreq *req) {
 static enum khttp dispatch(struct kreq *req) {
     switch (req->page) {
         case PAGE_INDEX:
-            return process_index(req);
+            return handle_index(req);
         case PAGE_LOGIN:
             return handle_login(req);
         case PAGE_REGISTER:

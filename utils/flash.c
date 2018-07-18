@@ -25,12 +25,12 @@ struct message *message_queue = NULL;
 
 extern bool flash(const char *msg, const enum msg_type type) {
     struct message *message;
-    if (NULL == (message = calloc(1, sizeof *message))) {
+    if ((message = calloc(1, sizeof *message)) == NULL) {
         return false;
     }
 
     char *msg_data;
-    if (NULL == (msg_data = strdup(msg))) {
+    if ((msg_data = strdup(msg)) == NULL) {
         free(message);
         return false;
     }
@@ -46,7 +46,7 @@ extern void get_flashed_messages(struct khtmlreq *htmlreq) {
     size_t pos = khtml_elemat(htmlreq);
 
     struct message *pmessage;
-    while (NULL != (pmessage = message_queue)) {
+    while ((pmessage = message_queue) != NULL) {
         khtml_attr(htmlreq, KELEM_P,
                    KATTR_CLASS, msg_class[pmessage->type],
                    KATTR__MAX);
@@ -59,7 +59,7 @@ extern void get_flashed_messages(struct khtmlreq *htmlreq) {
     }
 
     /* this is necessary due to a bug of kcgihtml */
-    if (pos != khtml_elemat(htmlreq)) {
+    if (khtml_elemat(htmlreq) != pos) {
         khtml_closeto(htmlreq, pos);
     }
 }

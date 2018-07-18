@@ -3,9 +3,7 @@
 //
 
 #include "handle_register.h"
-#include "../../utils/flash.h"
-#include "../../utils/http_body_open.h"
-#include "../../utils/html_init.h"
+#include "../../utils/utils.h"
 #include "../../config.h"
 
 #include <ksql.h>
@@ -42,28 +40,30 @@ static char *hash_password_alloc(const char *password);
 
 
 extern enum khttp handle_register(struct kreq *req) {
+    struct khtmlreq *htmlreq;
+
     switch (req->method) {
 
         case KMETHOD_GET:
-            http_body_open(req, KHTTP_200);
+            htmlreq = open_html_resp(req, KHTTP_200, "Register");
 
-            struct khtmlreq htmlreq;
-            khtml_open(&htmlreq, req, KHTML_PRETTY);
-            html_init(&htmlreq);
+            khtml_elem(htmlreq, KELEM_H1);
+            khtml_puts(htmlreq, "Join now!");
+            khtml_closeelem(htmlreq, 1);
+            render_register_form(htmlreq);
+            khtml_attr(htmlreq, KELEM_A,
+                       KATTR_HREF, pages[PAGE_LOGIN],
+                       KATTR__MAX);
+            khtml_puts(htmlreq, "Already have an account? Log in!");
+            khtml_closeelem(htmlreq, 1);
 
-            khtml_elem(&htmlreq, KELEM_H1);
-            khtml_puts(&htmlreq, "Join now!");
-            khtml_closeelem(&htmlreq, 1);
-            render_register_form(&htmlreq);
-
-            khtml_closeelem(&htmlreq, 0);
-            khtml_close(&htmlreq);
+            free_html_resp(htmlreq);
 
             khttp_free(req);
             return KHTTP_200;
 
         case KMETHOD_POST:
-            if (REG_SUCCESS == validate_register_form(req)) {
+            if (validate_register_form(req) == REG_SUCCESS) {
                 khttp_head(req, kresps[KRESP_LOCATION],
                            "%s", pages[PAGE_LOGIN]);
             } else {
@@ -75,8 +75,14 @@ extern enum khttp handle_register(struct kreq *req) {
             return KHTTP_302;
 
         default:
-            http_body_open(req, KHTTP_405);
-            khttp_puts(req, khttps[KHTTP_405]);
+            htmlreq = open_html_resp(req, KHTTP_405, khttps[KHTTP_405]);
+
+            khtml_elem(htmlreq, KELEM_P);
+            khtml_puts(htmlreq, khttps[KHTTP_405]);
+            khtml_closeelem(htmlreq, 1);
+
+            free_html_resp(htmlreq);
+
             khttp_free(req);
             return KHTTP_405;
     }
@@ -95,46 +101,46 @@ static void render_register_form(struct khtmlreq *htmlreq) {
     khtml_closeelem(htmlreq, 1);
 
     khtml_attr(htmlreq, KELEM_LABEL,
-               KATTR_FOR, "register-username",
+               KATTR_FOR, "username",
                KATTR__MAX);
     khtml_puts(htmlreq, "Username");
     khtml_closeelem(htmlreq, 1);
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "text",
-               KATTR_ID, "register-username",
+               KATTR_ID, "username",
                KATTR_NAME, keys[KEY_USERNAME].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
-               KATTR_FOR, "register-email",
+               KATTR_FOR, "email",
                KATTR__MAX);
     khtml_puts(htmlreq, "Email");
     khtml_closeelem(htmlreq, 1);
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "text",
-               KATTR_ID, "register-email",
+               KATTR_ID, "email",
                KATTR_NAME, keys[KEY_EMAIL].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
-               KATTR_FOR, "register-password",
+               KATTR_FOR, "password",
                KATTR__MAX);
     khtml_puts(htmlreq, "Password");
     khtml_closeelem(htmlreq, 1);
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "password",
-               KATTR_ID, "register-password",
+               KATTR_ID, "password",
                KATTR_NAME, keys[KEY_PASSWORD].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
-               KATTR_FOR, "register-password2",
+               KATTR_FOR, "password2",
                KATTR__MAX);
     khtml_puts(htmlreq, "Retype password");
     khtml_closeelem(htmlreq, 1);
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "password",
-               KATTR_ID, "register-password2",
+               KATTR_ID, "password2",
                KATTR_NAME, keys[KEY_PASSWORD2].name,
                KATTR__MAX);
 
@@ -144,7 +150,7 @@ static void render_register_form(struct khtmlreq *htmlreq) {
                KATTR__MAX);
 
     /* this is necessary due to a bug of kcgihtml */
-    if (pos != khtml_elemat(htmlreq)) {
+    if (khtml_elemat(htmlreq) != pos) {
         khtml_closeto(htmlreq, pos);
     }
 }
@@ -169,7 +175,7 @@ static enum register_state validate_register_form(struct kreq *req) {
     ksql_stmt_alloc(sql, &insert_stmt, NULL, STMT_INSERT_USER);
 
     struct kpair *pusername;
-    if (NULL != (pusername = req->fieldmap[KEY_USERNAME])) {
+    if ((pusername = req->fieldmap[KEY_USERNAME]) != NULL) {
         ksql_bind_str(select_user_stmt, 0, pusername->parsed.s);
         ksql_bind_str(insert_stmt, 0, pusername->parsed.s);
     } else if (req->fieldnmap[KEY_USERNAME]) {
@@ -181,7 +187,7 @@ static enum register_state validate_register_form(struct kreq *req) {
     }
 
     struct kpair *pemail;
-    if (NULL != (pemail = req->fieldmap[KEY_EMAIL])) {
+    if ((pemail = req->fieldmap[KEY_EMAIL]) != NULL) {
         ksql_bind_str(select_email_stmt, 0, pemail->parsed.s);
         ksql_bind_str(insert_stmt, 1, pemail->parsed.s);
     } else if (req->fieldnmap[KEY_EMAIL]) {
@@ -195,15 +201,15 @@ static enum register_state validate_register_form(struct kreq *req) {
     struct kpair *ppassword, *ppassword2;
     ppassword = req->fieldmap[KEY_PASSWORD];
     ppassword2 = req->fieldmap[KEY_PASSWORD2];
-    if (NULL == ppassword || NULL == ppassword2) {
+    if (ppassword == NULL || ppassword2 == NULL) {
         flash("Invalid password", MSG_TYPE_DANGER);
         goto out;
     }
 
-    if (0 == strcmp(ppassword->parsed.s,
-                    ppassword2->parsed.s)) {
+    if (strcmp(ppassword->parsed.s,
+               ppassword2->parsed.s) == 0) {
         char *hashed = hash_password_alloc(ppassword->parsed.s);
-        if (NULL != hashed) {
+        if (hashed != NULL) {
             ksql_bind_str(insert_stmt, 2, hashed);
             free(hashed);
         } else {
@@ -220,22 +226,22 @@ static enum register_state validate_register_form(struct kreq *req) {
     select_email_rv = ksql_stmt_step(select_email_stmt);
     ksql_stmt_free(select_user_stmt);
     ksql_stmt_free(select_email_stmt);
-    if (KSQL_ROW == select_user_rv) {
+    if (select_user_rv == KSQL_ROW) {
         flash("Username already taken", MSG_TYPE_DANGER);
         goto out;
-    } else if (KSQL_DONE != select_user_rv) {
+    } else if (select_user_rv != KSQL_DONE) {
         flash("Database error", MSG_TYPE_DANGER);
         goto out;
     }
-    if (KSQL_ROW == select_email_rv) {
+    if (select_email_rv == KSQL_ROW) {
         flash("Email already taken", MSG_TYPE_DANGER);
         goto out;
-    } else if (KSQL_DONE != select_email_rv) {
+    } else if (select_email_rv != KSQL_DONE) {
         flash("Database error", MSG_TYPE_DANGER);
         goto out;
     }
 
-    if (KSQL_DONE == ksql_stmt_step(insert_stmt)) {
+    if (ksql_stmt_step(insert_stmt) == KSQL_DONE) {
         flash("User created", MSG_TYPE_SUCCESS);
     } else {
         flash("Database error", MSG_TYPE_DANGER);
@@ -253,18 +259,18 @@ static enum register_state validate_register_form(struct kreq *req) {
 }
 
 static char *hash_password_alloc(const char *password) {
-    if (-1 == sodium_init()) {
+    if (sodium_init() < 0) {
         return NULL;
     }
 
     char *hashed;
-    if (NULL == (hashed = calloc(crypto_pwhash_STRBYTES, sizeof(char)))) {
+    if ((hashed = calloc(crypto_pwhash_STRBYTES, sizeof(char))) == NULL) {
         return NULL;
     }
 
-    if (0 != crypto_pwhash_str(hashed, password, strlen(password),
-                               crypto_pwhash_OPSLIMIT_SENSITIVE,
-                               crypto_pwhash_MEMLIMIT_SENSITIVE)) {
+    if (crypto_pwhash_str(hashed, password, strlen(password),
+                          crypto_pwhash_OPSLIMIT_SENSITIVE,
+                          crypto_pwhash_MEMLIMIT_SENSITIVE) != 0) {
         free(hashed);
         return NULL;
     }
