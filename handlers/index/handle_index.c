@@ -9,7 +9,7 @@
 
 extern enum khttp handle_index(struct kreq *req) {
     struct khtmlreq *htmlreq;
-    htmlreq = open_html_resp(req, KHTTP_200, "Home");
+    htmlreq = open_html_resp(req, KHTTP_200, "home");
 
     khtml_elem(htmlreq, KELEM_P);
     khtml_puts(htmlreq, "Welcome to Kernod!");

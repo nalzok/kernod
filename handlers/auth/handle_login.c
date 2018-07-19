@@ -28,7 +28,7 @@ static const char *const stmts[STMT__MAX] = {
 
 static void render_login_form(struct khtmlreq *htmlreq);
 
-static enum login_state validate_login_form(struct kreq *req);
+static enum login_state process_login_form(struct kreq *req);
 
 
 extern enum khttp handle_login(struct kreq *req) {
@@ -37,7 +37,7 @@ extern enum khttp handle_login(struct kreq *req) {
     switch (req->method) {
 
         case KMETHOD_GET:
-            htmlreq = open_html_resp(req, KHTTP_200, "Log In");
+            htmlreq = open_html_resp(req, KHTTP_200, "log in");
 
             khtml_elem(htmlreq, KELEM_H1);
             khtml_puts(htmlreq, "Login to continue");
@@ -55,7 +55,7 @@ extern enum khttp handle_login(struct kreq *req) {
             return KHTTP_200;
 
         case KMETHOD_POST:
-            if (validate_login_form(req) == LOGIN_SUCCESS) {
+            if (process_login_form(req) == LOGIN_SUCCESS) {
                 khttp_head(req, kresps[KRESP_LOCATION],
                            "%s", pages[PAGE_INDEX]);
             } else {
@@ -69,7 +69,7 @@ extern enum khttp handle_login(struct kreq *req) {
         default:
             htmlreq = open_html_resp(req, KHTTP_405, khttps[KHTTP_405]);
 
-            khtml_elem(htmlreq, KELEM_P);
+            khtml_elem(htmlreq, KELEM_H1);
             khtml_puts(htmlreq, khttps[KHTTP_405]);
             khtml_closeelem(htmlreq, 1);
 
@@ -115,10 +115,13 @@ static void render_login_form(struct khtmlreq *htmlreq) {
                KATTR_NAME, keys[KEY_PASSWORD].name,
                KATTR__MAX);
 
+    khtml_elem(htmlreq, KELEM_P);
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "submit",
                KATTR_VALUE, "Submit",
                KATTR__MAX);
+
+    khtml_closeelem(htmlreq, 1);
 
     /* this is necessary due to a bug of kcgihtml */
     if (khtml_elemat(htmlreq) != pos) {
@@ -127,7 +130,31 @@ static void render_login_form(struct khtmlreq *htmlreq) {
 }
 
 
-static enum login_state validate_login_form(struct kreq *req) {
+static enum login_state process_login_form(struct kreq *req) {
+
+    /* Check if all fields are present */
+
+    struct kpair *pusername;
+    if ((pusername = req->fieldmap[KEY_USERNAME]) == NULL) {
+        flash("Invalid username", MSG_TYPE_DANGER);
+        return LOGIN_FAILURE;
+    }
+
+    struct kpair *ppassword;
+    if ((ppassword = req->fieldmap[KEY_PASSWORD]) == NULL) {
+        flash("Invalid password", MSG_TYPE_DANGER);
+        return LOGIN_FAILURE;
+    }
+
+    /* Initialize libsodium */
+
+    if (sodium_init() < 0) {
+        flash("libsodium error", MSG_TYPE_DANGER);
+        return LOGIN_FAILURE;
+    }
+
+    /* Initialize database connection */
+
     struct ksqlcfg cfg;
     struct ksql *sql;
 
@@ -139,23 +166,20 @@ static enum login_state validate_login_form(struct kreq *req) {
     sql = ksql_alloc_child(&cfg, NULL, NULL);
     ksql_open(sql, "kernod.sqlite");
 
+    /* Get hashed password from database */
+
     struct ksqlstmt *stmt;
+    enum ksqlc stmt_rv;
+
     ksql_stmt_alloc(sql, &stmt, NULL, STMT_SELECT_PASSWORD);
+    ksql_bind_str(stmt, 0, pusername->parsed.s);
+    stmt_rv = ksql_stmt_step(stmt);
 
-    struct kpair *pusername;
-    if ((pusername = req->fieldmap[KEY_USERNAME]) != NULL) {
-        ksql_bind_str(stmt, 0, pusername->parsed.s);
-    } else if (req->fieldnmap[KEY_USERNAME]) {
-        flash("Invalid username", MSG_TYPE_DANGER);
-        goto out;
-    } else {
-        flash("Username not provided", MSG_TYPE_DANGER);
-        goto out;
-    }
-
-    if (ksql_stmt_step(stmt) != KSQL_ROW) {
+    if (stmt_rv != KSQL_ROW) {
         flash("User doesn't exist", MSG_TYPE_DANGER);
-        goto out;
+        ksql_stmt_free(stmt);
+        ksql_free(sql);
+        return LOGIN_FAILURE;
     }
 
     const char *hashed_volatile;
@@ -171,30 +195,14 @@ static enum login_state validate_login_form(struct kreq *req) {
     ksql_stmt_free(stmt);
     ksql_free(sql);
 
-    struct kpair *ppassword;
-    if ((ppassword = req->fieldmap[KEY_PASSWORD]) != NULL) {
-        if (sodium_init() < 0) {
-            flash("libsodium error", MSG_TYPE_DANGER);
-            return LOGIN_FAILURE;
-        }
-        if (crypto_pwhash_str_verify(hashed, ppassword->parsed.s,
-                                     strlen(ppassword->parsed.s)) == 0) {
-            flash("Welcome!", MSG_TYPE_SUCCESS);
-            return LOGIN_SUCCESS;
-        } else {
-            flash("Wrong password", MSG_TYPE_DANGER);
-            return LOGIN_FAILURE;
-        }
-    } else if (req->fieldnmap[KEY_PASSWORD]) {
-        flash("Invalid password", MSG_TYPE_DANGER);
-        return LOGIN_FAILURE;
+    /* Validate password */
+
+    if (crypto_pwhash_str_verify(hashed, ppassword->parsed.s,
+                                 strlen(ppassword->parsed.s)) == 0) {
+        flash("Welcome!", MSG_TYPE_SUCCESS);
+        return LOGIN_SUCCESS;
     } else {
-        flash("Password not provided", MSG_TYPE_DANGER);
+        flash("Wrong password", MSG_TYPE_DANGER);
         return LOGIN_FAILURE;
     }
-
-    out:
-    ksql_stmt_free(stmt);
-    ksql_free(sql);
-    return LOGIN_FAILURE;
 }

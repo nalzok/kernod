@@ -56,11 +56,12 @@ static void html_init(struct khtmlreq *htmlreq, const char *title) {
                KATTR_CONTENT, "width=device-width, initial-scale=1, shrink-to-fit=no",
                KATTR__MAX);
     khtml_elem(htmlreq, KELEM_TITLE);
+    khtml_puts(htmlreq, "Kernod - ");
     khtml_puts(htmlreq, title);
     khtml_closeelem(htmlreq, 1);
     khtml_attr(htmlreq, KELEM_LINK,
                KATTR_REL, "stylesheet",
-               KATTR_HREF, "/static/css/styles.css",
+               KATTR_HREF, "/static/css/bootstrap-reboot.css",
                KATTR__MAX);
     khtml_closeelem(htmlreq, 1);
 

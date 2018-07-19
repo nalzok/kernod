@@ -34,7 +34,7 @@ static const char *const stmts[STMT__MAX] = {
 
 static void render_register_form(struct khtmlreq *htmlreq);
 
-static enum register_state validate_register_form(struct kreq *req);
+static enum register_state process_register_form(struct kreq *req);
 
 static char *hash_password_alloc(const char *password);
 
@@ -45,7 +45,7 @@ extern enum khttp handle_register(struct kreq *req) {
     switch (req->method) {
 
         case KMETHOD_GET:
-            htmlreq = open_html_resp(req, KHTTP_200, "Register");
+            htmlreq = open_html_resp(req, KHTTP_200, "register");
 
             khtml_elem(htmlreq, KELEM_H1);
             khtml_puts(htmlreq, "Join now!");
@@ -63,7 +63,7 @@ extern enum khttp handle_register(struct kreq *req) {
             return KHTTP_200;
 
         case KMETHOD_POST:
-            if (validate_register_form(req) == REG_SUCCESS) {
+            if (process_register_form(req) == REG_SUCCESS) {
                 khttp_head(req, kresps[KRESP_LOCATION],
                            "%s", pages[PAGE_LOGIN]);
             } else {
@@ -77,7 +77,7 @@ extern enum khttp handle_register(struct kreq *req) {
         default:
             htmlreq = open_html_resp(req, KHTTP_405, khttps[KHTTP_405]);
 
-            khtml_elem(htmlreq, KELEM_P);
+            khtml_elem(htmlreq, KELEM_H1);
             khtml_puts(htmlreq, khttps[KHTTP_405]);
             khtml_closeelem(htmlreq, 1);
 
@@ -144,10 +144,12 @@ static void render_register_form(struct khtmlreq *htmlreq) {
                KATTR_NAME, keys[KEY_PASSWORD2].name,
                KATTR__MAX);
 
+    khtml_elem(htmlreq, KELEM_P);
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "submit",
                KATTR_VALUE, "Submit",
                KATTR__MAX);
+    khtml_closeelem(htmlreq, 1);
 
     /* this is necessary due to a bug of kcgihtml */
     if (khtml_elemat(htmlreq) != pos) {
@@ -155,7 +157,39 @@ static void render_register_form(struct khtmlreq *htmlreq) {
     }
 }
 
-static enum register_state validate_register_form(struct kreq *req) {
+static enum register_state process_register_form(struct kreq *req) {
+
+    /* Check if all fields are present */
+
+    struct kpair *pusername;
+    if ((pusername = req->fieldmap[KEY_USERNAME]) == NULL) {
+        flash("Invalid username", MSG_TYPE_DANGER);
+        return REG_FAILURE;
+    }
+
+    struct kpair *pemail;
+    if ((pemail = req->fieldmap[KEY_EMAIL]) == NULL) {
+        flash("Invalid email", MSG_TYPE_DANGER);
+        return REG_FAILURE;
+    }
+
+    struct kpair *ppassword, *ppassword2;
+    if ((ppassword = req->fieldmap[KEY_PASSWORD]) == NULL
+        || (ppassword2 = req->fieldmap[KEY_PASSWORD2]) == NULL) {
+        flash("Invalid password", MSG_TYPE_DANGER);
+        return REG_FAILURE;
+    }
+
+    /* Check if password matches password2 */
+
+    if (strcmp(ppassword->parsed.s,
+               ppassword2->parsed.s) != 0) {
+        flash("Passwords mismatch", MSG_TYPE_DANGER);
+        return REG_FAILURE;
+    }
+
+    /* initialize database connection */
+
     struct ksqlcfg cfg;
     struct ksql *sql;
 
@@ -167,95 +201,73 @@ static enum register_state validate_register_form(struct kreq *req) {
     sql = ksql_alloc_child(&cfg, NULL, NULL);
     ksql_open(sql, "kernod.sqlite");
 
-    struct ksqlstmt *select_user_stmt;
-    struct ksqlstmt *select_email_stmt;
-    struct ksqlstmt *insert_stmt;
-    ksql_stmt_alloc(sql, &select_user_stmt, NULL, STMT_SELECT_USER);
-    ksql_stmt_alloc(sql, &select_email_stmt, NULL, STMT_SELECT_EMAIL);
-    ksql_stmt_alloc(sql, &insert_stmt, NULL, STMT_INSERT_USER);
+    /* Check if username already taken */
 
-    struct kpair *pusername;
-    if ((pusername = req->fieldmap[KEY_USERNAME]) != NULL) {
-        ksql_bind_str(select_user_stmt, 0, pusername->parsed.s);
-        ksql_bind_str(insert_stmt, 0, pusername->parsed.s);
-    } else if (req->fieldnmap[KEY_USERNAME]) {
-        flash("Invalid username", MSG_TYPE_DANGER);
-        goto out;
-    } else {
-        flash("Username not provided", MSG_TYPE_DANGER);
-        goto out;
-    }
+    struct ksqlstmt *select_username_stmt;
+    enum ksqlc select_username_rv;
 
-    struct kpair *pemail;
-    if ((pemail = req->fieldmap[KEY_EMAIL]) != NULL) {
-        ksql_bind_str(select_email_stmt, 0, pemail->parsed.s);
-        ksql_bind_str(insert_stmt, 1, pemail->parsed.s);
-    } else if (req->fieldnmap[KEY_EMAIL]) {
-        flash("Invalid email", MSG_TYPE_DANGER);
-        goto out;
-    } else {
-        flash("Email not provided", MSG_TYPE_DANGER);
-        goto out;
-    }
+    ksql_stmt_alloc(sql, &select_username_stmt, NULL, STMT_SELECT_USER);
+    ksql_bind_str(select_username_stmt, 0, pusername->parsed.s);
+    select_username_rv = ksql_stmt_step(select_username_stmt);
+    ksql_stmt_free(select_username_stmt);
 
-    struct kpair *ppassword, *ppassword2;
-    ppassword = req->fieldmap[KEY_PASSWORD];
-    ppassword2 = req->fieldmap[KEY_PASSWORD2];
-    if (ppassword == NULL || ppassword2 == NULL) {
-        flash("Invalid password", MSG_TYPE_DANGER);
-        goto out;
-    }
-
-    if (strcmp(ppassword->parsed.s,
-               ppassword2->parsed.s) == 0) {
-        char *hashed = hash_password_alloc(ppassword->parsed.s);
-        if (hashed != NULL) {
-            ksql_bind_str(insert_stmt, 2, hashed);
-            free(hashed);
-        } else {
-            flash("Error hashing password", MSG_TYPE_DANGER);
-            goto out;
-        }
-    } else {
-        flash("Passwords mismatch", MSG_TYPE_DANGER);
-        goto out;
-    }
-
-    enum ksqlc select_user_rv, select_email_rv;
-    select_user_rv = ksql_stmt_step(select_user_stmt);
-    select_email_rv = ksql_stmt_step(select_email_stmt);
-    ksql_stmt_free(select_user_stmt);
-    ksql_stmt_free(select_email_stmt);
-    if (select_user_rv == KSQL_ROW) {
+    if (select_username_rv == KSQL_ROW) {
         flash("Username already taken", MSG_TYPE_DANGER);
-        goto out;
-    } else if (select_user_rv != KSQL_DONE) {
+        ksql_free(sql);
+        return REG_FAILURE;
+    } else if (select_username_rv != KSQL_DONE) {
         flash("Database error", MSG_TYPE_DANGER);
-        goto out;
+        ksql_free(sql);
+        return REG_FAILURE;
     }
+
+    /* Check if email already taken */
+
+    struct ksqlstmt *select_email_stmt;
+    enum ksqlc select_email_rv;
+
+    ksql_stmt_alloc(sql, &select_email_stmt, NULL, STMT_SELECT_EMAIL);
+    ksql_bind_str(select_email_stmt, 0, pemail->parsed.s);
+    select_email_rv = ksql_stmt_step(select_email_stmt);
+    ksql_stmt_free(select_email_stmt);
+
     if (select_email_rv == KSQL_ROW) {
         flash("Email already taken", MSG_TYPE_DANGER);
-        goto out;
+        ksql_free(sql);
+        return REG_FAILURE;
     } else if (select_email_rv != KSQL_DONE) {
         flash("Database error", MSG_TYPE_DANGER);
-        goto out;
+        ksql_free(sql);
+        return REG_FAILURE;
     }
 
-    if (ksql_stmt_step(insert_stmt) == KSQL_DONE) {
+    /* All fields validated, now create a new user */
+
+    char *hashed = hash_password_alloc(ppassword->parsed.s);
+    if (hashed == NULL) {
+        flash("Error hashing password", MSG_TYPE_DANGER);
+        ksql_free(sql);
+        return REG_FAILURE;
+    }
+
+    struct ksqlstmt *insert_user_stmt;
+    ksql_stmt_alloc(sql, &insert_user_stmt, NULL, STMT_INSERT_USER);
+    ksql_bind_str(insert_user_stmt, 0, pusername->parsed.s);
+    ksql_bind_str(insert_user_stmt, 1, pemail->parsed.s);
+    ksql_bind_str(insert_user_stmt, 2, hashed);
+    free(hashed);
+
+    if (ksql_stmt_step(insert_user_stmt) == KSQL_DONE) {
         flash("User created", MSG_TYPE_SUCCESS);
+        ksql_stmt_free(insert_user_stmt);
+        ksql_free(sql);
+        return REG_SUCCESS;
     } else {
         flash("Database error", MSG_TYPE_DANGER);
-        goto out;
+        ksql_stmt_free(insert_user_stmt);
+        ksql_free(sql);
+        return REG_FAILURE;
     }
-
-    ksql_stmt_free(insert_stmt);
-    ksql_free(sql);
-    return REG_SUCCESS;
-
-    out:
-    ksql_stmt_free(insert_stmt);
-    ksql_free(sql);
-    return REG_FAILURE;
 }
 
 static char *hash_password_alloc(const char *password) {
