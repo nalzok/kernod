@@ -10,6 +10,11 @@
 #include <stddef.h> /* NULL */
 #include <stdint.h> /* int64_t */
 #include <kcgi.h>
+#include <sodium.h>
+
+
+#define KERNOD_PWHASH_OPSLIMIT crypto_pwhash_OPSLIMIT_MODERATE
+#define KERNOD_PWHASH_MEMLIMIT crypto_pwhash_MEMLIMIT_MODERATE
 
 enum page {
     PAGE_INDEX,

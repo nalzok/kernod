@@ -7,7 +7,6 @@
 #include "../../config.h"
 
 #include <ksql.h>
-#include <sodium.h>
 #include <string.h>
 
 
@@ -35,8 +34,6 @@ static const char *const stmts[STMT__MAX] = {
 static void render_register_form(struct khtmlreq *htmlreq);
 
 static enum register_state process_register_form(struct kreq *req);
-
-static char *hash_password_alloc(const char *password);
 
 
 extern enum khttp handle_register(struct kreq *req) {
@@ -268,24 +265,4 @@ static enum register_state process_register_form(struct kreq *req) {
         ksql_free(sql);
         return REG_FAILURE;
     }
-}
-
-static char *hash_password_alloc(const char *password) {
-    if (sodium_init() < 0) {
-        return NULL;
-    }
-
-    char *hashed;
-    if ((hashed = calloc(crypto_pwhash_STRBYTES, sizeof(char))) == NULL) {
-        return NULL;
-    }
-
-    if (crypto_pwhash_str(hashed, password, strlen(password),
-                          crypto_pwhash_OPSLIMIT_SENSITIVE,
-                          crypto_pwhash_MEMLIMIT_SENSITIVE) != 0) {
-        free(hashed);
-        return NULL;
-    }
-
-    return hashed;
 }

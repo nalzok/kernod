@@ -7,28 +7,38 @@
 #include "../../config.h"
 
 #include <ksql.h>
-#include <sodium.h>
 #include <string.h>
 
 
 enum login_state {
     LOGIN_SUCCESS,
+    LOGIN_SUCCESS_BUT_REHASH_FAILURE,
     LOGIN_FAILURE,
+};
+
+enum rehash_state {
+    REHASH_SUCCESS,
+    REHASH_FAILURE,
 };
 
 enum login_stmt {
     STMT_SELECT_PASSWORD,
+    STMT_UPDATE_PASSWORD,
     STMT__MAX
 };
 
 static const char *const stmts[STMT__MAX] = {
         "SELECT password FROM users "
         "WHERE username = ?",
+        "UPDATE users SET password = ? "
+        "WHERE username = ?",
 };
 
 static void render_login_form(struct khtmlreq *htmlreq);
 
 static enum login_state process_login_form(struct kreq *req);
+
+static enum rehash_state rehash_password(struct ksql *sql, const char *username, const char *password);
 
 
 extern enum khttp handle_login(struct kreq *req) {
@@ -168,41 +178,94 @@ static enum login_state process_login_form(struct kreq *req) {
 
     /* Get hashed password from database */
 
-    struct ksqlstmt *stmt;
-    enum ksqlc stmt_rv;
+    struct ksqlstmt *select_password_stmt;
+    enum ksqlc select_password_rv;
 
-    ksql_stmt_alloc(sql, &stmt, NULL, STMT_SELECT_PASSWORD);
-    ksql_bind_str(stmt, 0, pusername->parsed.s);
-    stmt_rv = ksql_stmt_step(stmt);
+    ksql_stmt_alloc(sql, &select_password_stmt, NULL, STMT_SELECT_PASSWORD);
+    ksql_bind_str(select_password_stmt, 0, pusername->parsed.s);
+    select_password_rv = ksql_stmt_step(select_password_stmt);
 
-    if (stmt_rv != KSQL_ROW) {
+    if (select_password_rv != KSQL_ROW) {
         flash("User doesn't exist", MSG_TYPE_DANGER);
-        ksql_stmt_free(stmt);
+        ksql_stmt_free(select_password_stmt);
         ksql_free(sql);
         return LOGIN_FAILURE;
     }
 
     const char *hashed_volatile;
     char *hashed;
-    ksql_result_str(stmt, &hashed_volatile, 0);
+    ksql_result_str(select_password_stmt, &hashed_volatile, 0);
     if ((hashed = strdup(hashed_volatile)) == NULL) {
-        ksql_stmt_free(stmt);
+        ksql_stmt_free(select_password_stmt);
         ksql_free(sql);
         perror("strdup");
         exit(EXIT_FAILURE);
     }
 
-    ksql_stmt_free(stmt);
-    ksql_free(sql);
+    ksql_stmt_free(select_password_stmt);
 
     /* Validate password */
 
     if (crypto_pwhash_str_verify(hashed, ppassword->parsed.s,
-                                 strlen(ppassword->parsed.s)) == 0) {
-        flash("Welcome!", MSG_TYPE_SUCCESS);
-        return LOGIN_SUCCESS;
-    } else {
+                                 strlen(ppassword->parsed.s)) != 0) {
         flash("Wrong password", MSG_TYPE_DANGER);
+        ksql_free(sql);
         return LOGIN_FAILURE;
     }
+
+    flash("Welcome!", MSG_TYPE_SUCCESS);
+
+    /* Rehash password if necessary */
+
+    int needs_rehash = crypto_pwhash_str_needs_rehash(hashed,
+                                                      KERNOD_PWHASH_OPSLIMIT,
+                                                      KERNOD_PWHASH_MEMLIMIT);
+
+    if (needs_rehash == 0) {
+        /* No need to rehash */
+        ksql_free(sql);
+        return LOGIN_SUCCESS;
+    }
+
+    enum rehash_state rehash_password_rv;
+    rehash_password_rv = rehash_password(sql, pusername->parsed.s, ppassword->parsed.s);
+
+    ksql_free(sql);
+
+    if (rehash_password_rv == REHASH_SUCCESS) {
+        return LOGIN_SUCCESS;
+    } else {
+        /* failed to rehash, but we can do it the next time */
+        return LOGIN_SUCCESS_BUT_REHASH_FAILURE;
+    }
+}
+
+static enum rehash_state rehash_password(struct ksql *sql, const char *username, const char *password) {
+
+    /* Compute a new hash */
+
+    char *new_hashed = hash_password_alloc(password);
+    if (new_hashed == NULL) {
+        flash("Error computing password hash", MSG_TYPE_WARNING);
+        return REHASH_FAILURE;
+    }
+
+    /* Update password hash */
+
+    struct ksqlstmt *update_password_stmt;
+    enum ksqlc update_password_rv;
+
+    ksql_stmt_alloc(sql, &update_password_stmt, NULL, STMT_UPDATE_PASSWORD);
+    ksql_bind_str(update_password_stmt, 0, new_hashed);
+    ksql_bind_str(update_password_stmt, 1, username);
+    update_password_rv = ksql_stmt_step(update_password_stmt);
+    ksql_stmt_free(update_password_stmt);
+
+    if (update_password_rv != KSQL_DONE) {
+        flash("Cannot update password hash", MSG_TYPE_WARNING);
+        return REHASH_FAILURE;
+    }
+
+    flash("Password rehashed", MSG_TYPE_SUCCESS);
+    return REHASH_SUCCESS;
 }

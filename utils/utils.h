@@ -7,5 +7,6 @@
 
 #include "flash.h"
 #include "html_resp.h"
+#include "hash_password_alloc.h"
 
 #endif //KERNOD_UTILS_H
