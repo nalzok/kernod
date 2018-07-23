@@ -8,6 +8,7 @@
 
 #include <ksql.h>
 #include <string.h>
+#include <inttypes.h>
 
 
 enum login_state {
@@ -22,13 +23,13 @@ enum rehash_state {
 };
 
 enum login_stmt {
-    STMT_SELECT_PASSWORD,
+    STMT_SELECT_ID_PASSWORD,
     STMT_UPDATE_PASSWORD,
     STMT__MAX
 };
 
 static const char *const stmts[STMT__MAX] = {
-        "SELECT password FROM users "
+        "SELECT user_id, password FROM users "
         "WHERE username = ?",
         "UPDATE users SET password = ? "
         "WHERE username = ?",
@@ -42,16 +43,22 @@ static enum rehash_state rehash_password(struct ksql *sql, const char *username,
 
 
 extern enum khttp handle_login(struct kreq *req) {
-    struct khtmlreq *htmlreq;
+    struct khtmlreq *htmlreq = NULL;
 
     switch (req->method) {
 
         case KMETHOD_GET:
-            htmlreq = open_html_resp(req, KHTTP_200, "log in");
+            htmlreq = html_resp_alloc(req, KHTTP_200, "log in");
 
             khtml_elem(htmlreq, KELEM_H1);
             khtml_puts(htmlreq, "Login to continue");
             khtml_closeelem(htmlreq, 1);
+            if (session.user_id != 0) {
+                khtml_elem(htmlreq, KELEM_I);
+                khtml_puts(htmlreq, "You are already logged in as ");
+                khtml_puts(htmlreq, session.username);
+                khtml_closeelem(htmlreq, 1);
+            }
             render_login_form(htmlreq);
             khtml_attr(htmlreq, KELEM_A,
                        KATTR_HREF, pages[PAGE_REGISTER],
@@ -66,26 +73,14 @@ extern enum khttp handle_login(struct kreq *req) {
 
         case KMETHOD_POST:
             if (process_login_form(req) == LOGIN_SUCCESS) {
-                khttp_head(req, kresps[KRESP_LOCATION],
-                           "%s", pages[PAGE_INDEX]);
+                redirect_resp(req, pages[PAGE_INDEX]);
             } else {
-                khttp_head(req, kresps[KRESP_LOCATION],
-                           "%s", pages[PAGE_LOGIN]);
+                redirect_resp(req, pages[PAGE_LOGIN]);
             }
-            khttp_body(req);
-            khttp_free(req);
-            return KHTTP_302;
+            return KHTTP_303;
 
         default:
-            htmlreq = open_html_resp(req, KHTTP_405, khttps[KHTTP_405]);
-
-            khtml_elem(htmlreq, KELEM_H1);
-            khtml_puts(htmlreq, khttps[KHTTP_405]);
-            khtml_closeelem(htmlreq, 1);
-
-            free_html_resp(htmlreq);
-
-            khttp_free(req);
+            status_only_resp(req, KHTTP_405);
             return KHTTP_405;
     }
 }
@@ -111,7 +106,7 @@ static void render_login_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "text",
                KATTR_ID, "username",
-               KATTR_NAME, keys[KEY_USERNAME].name,
+               KATTR_NAME, key_cookies[KEY_USERNAME].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
@@ -122,7 +117,18 @@ static void render_login_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "password",
                KATTR_ID, "password",
-               KATTR_NAME, keys[KEY_PASSWORD].name,
+               KATTR_NAME, key_cookies[KEY_PASSWORD].name,
+               KATTR__MAX);
+
+    khtml_attr(htmlreq, KELEM_LABEL,
+               KATTR_FOR, "remember-me",
+               KATTR__MAX);
+    khtml_puts(htmlreq, "Remember me");
+    khtml_closeelem(htmlreq, 1);
+    khtml_attr(htmlreq, KELEM_INPUT,
+               KATTR_TYPE, "checkbox",
+               KATTR_ID, "remember-me",
+               KATTR_NAME, key_cookies[KEY_REMEMBER_ME].name,
                KATTR__MAX);
 
     khtml_elem(htmlreq, KELEM_P);
@@ -156,13 +162,6 @@ static enum login_state process_login_form(struct kreq *req) {
         return LOGIN_FAILURE;
     }
 
-    /* Initialize libsodium */
-
-    if (sodium_init() < 0) {
-        flash("libsodium error", MSG_TYPE_DANGER);
-        return LOGIN_FAILURE;
-    }
-
     /* Initialize database connection */
 
     struct ksqlcfg cfg;
@@ -176,33 +175,36 @@ static enum login_state process_login_form(struct kreq *req) {
     sql = ksql_alloc_child(&cfg, NULL, NULL);
     ksql_open(sql, "kernod.sqlite");
 
-    /* Get hashed password from database */
+    /* Get user ID and hashed password from database */
 
-    struct ksqlstmt *select_password_stmt;
-    enum ksqlc select_password_rv;
+    struct ksqlstmt *select_id_password_stmt;
+    enum ksqlc select_id_password_rv;
 
-    ksql_stmt_alloc(sql, &select_password_stmt, NULL, STMT_SELECT_PASSWORD);
-    ksql_bind_str(select_password_stmt, 0, pusername->parsed.s);
-    select_password_rv = ksql_stmt_step(select_password_stmt);
+    ksql_stmt_alloc(sql, &select_id_password_stmt, NULL, STMT_SELECT_ID_PASSWORD);
+    ksql_bind_str(select_id_password_stmt, 0, pusername->parsed.s);
+    select_id_password_rv = ksql_stmt_step(select_id_password_stmt);
 
-    if (select_password_rv != KSQL_ROW) {
+    if (select_id_password_rv != KSQL_ROW) {
         flash("User doesn't exist", MSG_TYPE_DANGER);
-        ksql_stmt_free(select_password_stmt);
+        ksql_stmt_free(select_id_password_stmt);
         ksql_free(sql);
         return LOGIN_FAILURE;
     }
 
+    int64_t user_id;
+    ksql_result_int(select_id_password_stmt, &user_id, 0);
+
     const char *hashed_volatile;
     char *hashed;
-    ksql_result_str(select_password_stmt, &hashed_volatile, 0);
+    ksql_result_str(select_id_password_stmt, &hashed_volatile, 1);
     if ((hashed = strdup(hashed_volatile)) == NULL) {
-        ksql_stmt_free(select_password_stmt);
+        ksql_stmt_free(select_id_password_stmt);
         ksql_free(sql);
         perror("strdup");
         exit(EXIT_FAILURE);
     }
 
-    ksql_stmt_free(select_password_stmt);
+    ksql_stmt_free(select_id_password_stmt);
 
     /* Validate password */
 
@@ -213,7 +215,47 @@ static enum login_state process_login_form(struct kreq *req) {
         return LOGIN_FAILURE;
     }
 
+    /* Initialize libsodium */
+
+    if (sodium_init() < 0) {
+        flash("libsodium error", MSG_TYPE_DANGER);
+        ksql_free(sql);
+        return LOGIN_FAILURE;
+    }
+
+    /* Issue a random session ID to the client */
+
+    char session_id[81];
+    sprintf(session_id, "%"
+            PRIx32
+            "%"
+            PRIx32
+            "%"
+            PRIx32
+            "%"
+            PRIx32
+            "%"
+            PRIx32
+            "%"
+            PRIx32
+            "%"
+            PRIx32
+            "%"
+            PRIx32,
+            randombytes_random(), randombytes_random(), randombytes_random(), randombytes_random(),
+            randombytes_random(), randombytes_random(), randombytes_random(), randombytes_random());
+
+    char time_buf[30];
+    khttp_head(req, kresps[KRESP_SET_COOKIE],
+               "%s=%s; Path=/; expires=%s",
+               key_cookies[COOKIE_SESSION_ID].name, session_id,
+               kutil_epoch2str(time(NULL) + KERNOD_SESSION_EXPIRE_SECONDS,
+                               time_buf, sizeof time_buf));
     flash("Welcome!", MSG_TYPE_SUCCESS);
+
+    /* Also store the session ID and user ID in Redis */
+
+    set_value_integer("session", session_id, user_id, KERNOD_SESSION_EXPIRE_SECONDS);
 
     /* Rehash password if necessary */
 

@@ -37,12 +37,12 @@ static enum register_state process_register_form(struct kreq *req);
 
 
 extern enum khttp handle_register(struct kreq *req) {
-    struct khtmlreq *htmlreq;
+    struct khtmlreq *htmlreq = NULL;
 
     switch (req->method) {
 
         case KMETHOD_GET:
-            htmlreq = open_html_resp(req, KHTTP_200, "register");
+            htmlreq = html_resp_alloc(req, KHTTP_200, "register");
 
             khtml_elem(htmlreq, KELEM_H1);
             khtml_puts(htmlreq, "Join now!");
@@ -61,26 +61,14 @@ extern enum khttp handle_register(struct kreq *req) {
 
         case KMETHOD_POST:
             if (process_register_form(req) == REG_SUCCESS) {
-                khttp_head(req, kresps[KRESP_LOCATION],
-                           "%s", pages[PAGE_LOGIN]);
+                redirect_resp(req, pages[PAGE_LOGIN]);
             } else {
-                khttp_head(req, kresps[KRESP_LOCATION],
-                           "%s", pages[PAGE_REGISTER]);
+                redirect_resp(req, pages[PAGE_REGISTER]);
             }
-            khttp_body(req);
-            khttp_free(req);
-            return KHTTP_302;
+            return KHTTP_303;
 
         default:
-            htmlreq = open_html_resp(req, KHTTP_405, khttps[KHTTP_405]);
-
-            khtml_elem(htmlreq, KELEM_H1);
-            khtml_puts(htmlreq, khttps[KHTTP_405]);
-            khtml_closeelem(htmlreq, 1);
-
-            free_html_resp(htmlreq);
-
-            khttp_free(req);
+            status_only_resp(req, KHTTP_405);
             return KHTTP_405;
     }
 }
@@ -105,7 +93,7 @@ static void render_register_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "text",
                KATTR_ID, "username",
-               KATTR_NAME, keys[KEY_USERNAME].name,
+               KATTR_NAME, key_cookies[KEY_USERNAME].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
@@ -116,7 +104,7 @@ static void render_register_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "text",
                KATTR_ID, "email",
-               KATTR_NAME, keys[KEY_EMAIL].name,
+               KATTR_NAME, key_cookies[KEY_EMAIL].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
@@ -127,7 +115,7 @@ static void render_register_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "password",
                KATTR_ID, "password",
-               KATTR_NAME, keys[KEY_PASSWORD].name,
+               KATTR_NAME, key_cookies[KEY_PASSWORD].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
@@ -138,7 +126,7 @@ static void render_register_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "password",
                KATTR_ID, "password2",
-               KATTR_NAME, keys[KEY_PASSWORD2].name,
+               KATTR_NAME, key_cookies[KEY_PASSWORD2].name,
                KATTR__MAX);
 
     khtml_elem(htmlreq, KELEM_P);

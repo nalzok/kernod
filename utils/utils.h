@@ -6,7 +6,9 @@
 #define KERNOD_UTILS_H
 
 #include "flash.h"
-#include "html_resp.h"
-#include "hash_password_alloc.h"
+#include "resp.h"
+#include "hash.h"
+#include "storage.h"
+#include "session.h"
 
 #endif //KERNOD_UTILS_H

@@ -2,18 +2,18 @@
 // Created by 孙庆耀 on 2018/7/18.
 //
 
-#include "html_resp.h"
+#include "resp.h"
 #include "flash.h"
 #include <stdlib.h>
 
 
-static void http_body_open(struct kreq *req, enum khttp status);
+static void open_http_body(struct kreq *req, enum khttp status);
 
-static void html_init(struct khtmlreq *htmlreq, const char *title);
+static void init_html(struct khtmlreq *htmlreq, const char *title);
 
 
-extern struct khtmlreq *open_html_resp(struct kreq *req, enum khttp status, const char *title) {
-    http_body_open(req, status);
+extern struct khtmlreq *html_resp_alloc(struct kreq *req, enum khttp status, const char *title) {
+    open_http_body(req, status);
     khttp_puts(req, "<!DOCTYPE html>");
 
     struct khtmlreq *htmlreq;
@@ -22,7 +22,7 @@ extern struct khtmlreq *open_html_resp(struct kreq *req, enum khttp status, cons
     }
 
     khtml_open(htmlreq, req, KHTML_PRETTY);
-    html_init(htmlreq, title);
+    init_html(htmlreq, title);
 
     return htmlreq;
 }
@@ -33,7 +33,7 @@ extern void free_html_resp(struct khtmlreq *htmlreq) {
     free(htmlreq);
 }
 
-static void http_body_open(struct kreq *req, enum khttp status) {
+static void open_http_body(struct kreq *req, enum khttp status) {
     khttp_head(req, kresps[KRESP_STATUS],
                "%s", khttps[status]);
     khttp_head(req, kresps[KRESP_CONTENT_TYPE],
@@ -44,7 +44,7 @@ static void http_body_open(struct kreq *req, enum khttp status) {
     khttp_body(req);
 }
 
-static void html_init(struct khtmlreq *htmlreq, const char *title) {
+static void init_html(struct khtmlreq *htmlreq, const char *title) {
     khtml_elem(htmlreq, KELEM_HTML);
 
     khtml_elem(htmlreq, KELEM_HEAD);
@@ -67,4 +67,18 @@ static void html_init(struct khtmlreq *htmlreq, const char *title) {
 
     khtml_elem(htmlreq, KELEM_BODY);
     get_flashed_messages(htmlreq);
+}
+
+extern void redirect_resp(struct kreq *req, const char *loc) {
+    khttp_head(req, kresps[KRESP_STATUS], "%s", khttps[KHTTP_303]);
+    khttp_head(req, kresps[KRESP_LOCATION], "%s", loc);
+    khttp_body(req);
+    khttp_free(req);
+}
+
+extern void status_only_resp(struct kreq *req, enum khttp status) {
+    khttp_head(req, kresps[KRESP_STATUS], "%s", khttps[status]);
+    khttp_body(req);
+    khttp_puts(req, khttps[status]);
+    khttp_free(req);
 }

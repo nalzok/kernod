@@ -7,6 +7,9 @@
 
 
 extern char *hash_password_alloc(const char *password) {
+
+    /* It is safe to call sodium_init() multiple times. */
+
     if (sodium_init() < 0) {
         return NULL;
     }
