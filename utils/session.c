@@ -12,7 +12,7 @@
 
 
 enum session_stmt {
-    STMT_SELECT_SESSION,
+    STMT_SELECT_USER_DATA,
     STMT__MAX
 };
 
@@ -21,16 +21,24 @@ static const char *const stmts[STMT__MAX] = {
         "WHERE user_id = ?",
 };
 
-struct session_t session = {0, NULL, NULL, NULL};
+struct session_t session = {NULL};
 
 
-extern struct session_t *init_session(struct kreq *req) {
+extern enum session_init_state populate_session(struct kreq *req) {
 
     /* Check if session ID is present in cookie */
 
     struct kpair *psession_id = req->cookiemap[COOKIE_SESSION_ID];
     if (psession_id == NULL) {
-        return NULL;
+        return SESSION_INIT_FAILURE;
+    }
+
+    /* Allocate memory */
+
+    session.user = calloc(1, sizeof *(session.user));
+    if (session.user == NULL) {
+        free_session();
+        return SESSION_INIT_FAILURE;
     }
 
     /* Get user_id from Redis */
@@ -38,59 +46,74 @@ extern struct session_t *init_session(struct kreq *req) {
     struct redisReply *reply = get_value("session", psession_id->parsed.s);
     if (reply == NULL || reply->type != REDIS_REPLY_STRING) {
         freeReplyObject(reply);
-        return NULL;
+        free_session();
+        return SESSION_INIT_FAILURE;
     }
 
-    session.user_id = strtoimax(reply->str, NULL, 10);
+    session.user->user_id = strtoimax(reply->str, NULL, 10);
 
     freeReplyObject(reply);
 
     /* Initialize database connection */
 
     struct ksqlcfg cfg;
-    struct ksql *sql;
-
     ksql_cfg_defaults(&cfg);
-    cfg.flags |= KSQL_FOREIGN_KEYS;
     cfg.stmts.stmts = stmts;
     cfg.stmts.stmtsz = STMT__MAX;
 
+    struct ksql *sql;
     sql = ksql_alloc_child(&cfg, NULL, NULL);
     ksql_open(sql, "kernod.sqlite");
 
     /* Select data from SQLite */
 
-    struct ksqlstmt *select_session_stmt;
-    enum ksqlc select_session_rv;
+    struct ksqlstmt *select_user_data_stmt;
+    ksql_stmt_alloc(sql, &select_user_data_stmt, NULL, STMT_SELECT_USER_DATA);
+    ksql_bind_int(select_user_data_stmt, 0, session.user->user_id);
 
-    ksql_stmt_alloc(sql, &select_session_stmt, NULL, STMT_SELECT_SESSION);
-    ksql_bind_int(select_session_stmt, 0, session.user_id);
-    select_session_rv = ksql_stmt_step(select_session_stmt);
+    enum ksqlc select_user_data_rv;
+    select_user_data_rv = ksql_stmt_step(select_user_data_stmt);
 
-    if (select_session_rv != KSQL_ROW) {
-        flash("You are not logged in.", MSG_TYPE_DANGER);
-        ksql_stmt_free(select_session_stmt);
+    if (select_user_data_rv != KSQL_ROW) {
+        fprintf(stderr, "Cannot find user %"PRId64"\n", session.user->user_id);
+        ksql_stmt_free(select_user_data_stmt);
         ksql_free(sql);
-        return NULL;
+        free_session();
+        return SESSION_INIT_FAILURE;
     }
 
     const char *username_volatile, *email_volatile, *join_ts_volatile;
-    ksql_result_str(select_session_stmt, &username_volatile, 0);
-    ksql_result_str(select_session_stmt, &email_volatile, 1);
-    ksql_result_str(select_session_stmt, &join_ts_volatile, 2);
+    ksql_result_str(select_user_data_stmt, &username_volatile, 0);
+    ksql_result_str(select_user_data_stmt, &email_volatile, 1);
+    ksql_result_str(select_user_data_stmt, &join_ts_volatile, 2);
 
-    session.username = strdup(username_volatile);
-    session.email = strdup(email_volatile);
-    session.join_ts = strdup(join_ts_volatile);
+    session.user->username = strdup(username_volatile);
+    session.user->email = strdup(email_volatile);
+    session.user->join_ts = strdup(join_ts_volatile);
 
-    ksql_stmt_free(select_session_stmt);
+    ksql_stmt_free(select_user_data_stmt);
     ksql_free(sql);
 
-    if (session.username == NULL
-        || session.email == NULL
-        || session.join_ts == NULL) {
-        return NULL;
+    if (session.user->username == NULL
+        || session.user->email == NULL
+        || session.user->join_ts == NULL) {
+        free_session();
+        return SESSION_INIT_FAILURE;
     }
 
-    return &session;
+    return SESSION_INIT_SUCCESS;
+}
+
+extern void free_session(void) {
+    if (session.user != NULL) {
+        free(session.user->username);
+        free(session.user->email);
+        free(session.user->join_ts);
+    }
+    free(session.user);
+    session = (struct session_t) {NULL};
+}
+
+extern const struct user_t *current_user(void) {
+    return session.user;
 }

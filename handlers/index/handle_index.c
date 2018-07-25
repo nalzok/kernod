@@ -12,9 +12,10 @@ extern enum khttp handle_index(struct kreq *req) {
     htmlreq = html_resp_alloc(req, KHTTP_200, "home");
 
     khtml_elem(htmlreq, KELEM_P);
-    if (session.user_id != 0) {
+    const struct user_t *user = current_user();
+    if (user != NULL) {
         khtml_puts(htmlreq, "Welcome back to Kernod, ");
-        khtml_puts(htmlreq, session.username);
+        khtml_puts(htmlreq, user->username);
     } else {
         khtml_puts(htmlreq, "Welcome to Kernod!");
     }

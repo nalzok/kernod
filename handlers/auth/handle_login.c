@@ -35,7 +35,7 @@ static const char *const stmts[STMT__MAX] = {
         "WHERE username = ?",
 };
 
-static void render_login_form(struct khtmlreq *htmlreq);
+static void insert_login_form(struct khtmlreq *htmlreq);
 
 static enum login_state process_login_form(struct kreq *req);
 
@@ -53,17 +53,18 @@ extern enum khttp handle_login(struct kreq *req) {
             khtml_elem(htmlreq, KELEM_H1);
             khtml_puts(htmlreq, "Login to continue");
             khtml_closeelem(htmlreq, 1);
-            if (session.user_id != 0) {
+            const struct user_t *user = current_user();
+            if (user != NULL) {
                 khtml_elem(htmlreq, KELEM_I);
                 khtml_puts(htmlreq, "You are already logged in as ");
-                khtml_puts(htmlreq, session.username);
+                khtml_puts(htmlreq, user->username);
                 khtml_closeelem(htmlreq, 1);
             }
-            render_login_form(htmlreq);
+            insert_login_form(htmlreq);
             khtml_attr(htmlreq, KELEM_A,
                        KATTR_HREF, pages[PAGE_REGISTER],
                        KATTR__MAX);
-            khtml_puts(htmlreq, "Don't have an account? Register now!");
+            khtml_puts(htmlreq, "Don't have an account? Join now!");
             khtml_closeelem(htmlreq, 1);
 
             free_html_resp(htmlreq);
@@ -72,6 +73,7 @@ extern enum khttp handle_login(struct kreq *req) {
             return KHTTP_200;
 
         case KMETHOD_POST:
+            /* Post/Redirect/Get pattern */
             if (process_login_form(req) == LOGIN_SUCCESS) {
                 redirect_resp(req, pages[PAGE_INDEX]);
             } else {
@@ -86,7 +88,7 @@ extern enum khttp handle_login(struct kreq *req) {
 }
 
 
-static void render_login_form(struct khtmlreq *htmlreq) {
+static void insert_login_form(struct khtmlreq *htmlreq) {
     size_t pos = khtml_elemat(htmlreq);
 
     khtml_attr(htmlreq, KELEM_FORM,
@@ -165,23 +167,21 @@ static enum login_state process_login_form(struct kreq *req) {
     /* Initialize database connection */
 
     struct ksqlcfg cfg;
-    struct ksql *sql;
-
     ksql_cfg_defaults(&cfg);
-    cfg.flags |= KSQL_FOREIGN_KEYS;
     cfg.stmts.stmts = stmts;
     cfg.stmts.stmtsz = STMT__MAX;
 
+    struct ksql *sql;
     sql = ksql_alloc_child(&cfg, NULL, NULL);
     ksql_open(sql, "kernod.sqlite");
 
     /* Get user ID and hashed password from database */
 
     struct ksqlstmt *select_id_password_stmt;
-    enum ksqlc select_id_password_rv;
-
     ksql_stmt_alloc(sql, &select_id_password_stmt, NULL, STMT_SELECT_ID_PASSWORD);
     ksql_bind_str(select_id_password_stmt, 0, pusername->parsed.s);
+
+    enum ksqlc select_id_password_rv;
     select_id_password_rv = ksql_stmt_step(select_id_password_stmt);
 
     if (select_id_password_rv != KSQL_ROW) {
@@ -245,12 +245,13 @@ static enum login_state process_login_form(struct kreq *req) {
             randombytes_random(), randombytes_random(), randombytes_random(), randombytes_random(),
             randombytes_random(), randombytes_random(), randombytes_random(), randombytes_random());
 
-    char time_buf[30];
+    char time_buffer[30];
     khttp_head(req, kresps[KRESP_SET_COOKIE],
                "%s=%s; Path=/; expires=%s",
-               key_cookies[COOKIE_SESSION_ID].name, session_id,
+               key_cookies[COOKIE_SESSION_ID].name,
+               session_id,
                kutil_epoch2str(time(NULL) + KERNOD_SESSION_EXPIRE_SECONDS,
-                               time_buf, sizeof time_buf));
+                               time_buffer, sizeof time_buffer));
     flash("Welcome!", MSG_TYPE_SUCCESS);
 
     /* Also store the session ID and user ID in Redis */
@@ -288,18 +289,18 @@ static enum rehash_state rehash_password(struct ksql *sql, const char *username,
 
     char *new_hashed = hash_password_alloc(password);
     if (new_hashed == NULL) {
-        flash("Error computing password hash", MSG_TYPE_WARNING);
+        fprintf(stderr, "Error computing password hash\n");
         return REHASH_FAILURE;
     }
 
     /* Update password hash */
 
     struct ksqlstmt *update_password_stmt;
-    enum ksqlc update_password_rv;
-
     ksql_stmt_alloc(sql, &update_password_stmt, NULL, STMT_UPDATE_PASSWORD);
     ksql_bind_str(update_password_stmt, 0, new_hashed);
     ksql_bind_str(update_password_stmt, 1, username);
+
+    enum ksqlc update_password_rv;
     update_password_rv = ksql_stmt_step(update_password_stmt);
     ksql_stmt_free(update_password_stmt);
 

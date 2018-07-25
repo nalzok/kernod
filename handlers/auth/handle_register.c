@@ -31,7 +31,7 @@ static const char *const stmts[STMT__MAX] = {
         "VALUES(?, ?, ?)",
 };
 
-static void render_register_form(struct khtmlreq *htmlreq);
+static void insert_register_form(struct khtmlreq *htmlreq);
 
 static enum register_state process_register_form(struct kreq *req);
 
@@ -47,7 +47,7 @@ extern enum khttp handle_register(struct kreq *req) {
             khtml_elem(htmlreq, KELEM_H1);
             khtml_puts(htmlreq, "Join now!");
             khtml_closeelem(htmlreq, 1);
-            render_register_form(htmlreq);
+            insert_register_form(htmlreq);
             khtml_attr(htmlreq, KELEM_A,
                        KATTR_HREF, pages[PAGE_LOGIN],
                        KATTR__MAX);
@@ -60,6 +60,7 @@ extern enum khttp handle_register(struct kreq *req) {
             return KHTTP_200;
 
         case KMETHOD_POST:
+            /* Post/Redirect/Get pattern */
             if (process_register_form(req) == REG_SUCCESS) {
                 redirect_resp(req, pages[PAGE_LOGIN]);
             } else {
@@ -73,7 +74,7 @@ extern enum khttp handle_register(struct kreq *req) {
     }
 }
 
-static void render_register_form(struct khtmlreq *htmlreq) {
+static void insert_register_form(struct khtmlreq *htmlreq) {
     size_t pos = khtml_elemat(htmlreq);
 
     khtml_attr(htmlreq, KELEM_FORM,
@@ -176,23 +177,21 @@ static enum register_state process_register_form(struct kreq *req) {
     /* initialize database connection */
 
     struct ksqlcfg cfg;
-    struct ksql *sql;
-
     ksql_cfg_defaults(&cfg);
-    cfg.flags |= KSQL_FOREIGN_KEYS;
     cfg.stmts.stmts = stmts;
     cfg.stmts.stmtsz = STMT__MAX;
 
+    struct ksql *sql;
     sql = ksql_alloc_child(&cfg, NULL, NULL);
     ksql_open(sql, "kernod.sqlite");
 
     /* Check if username already taken */
 
     struct ksqlstmt *select_username_stmt;
-    enum ksqlc select_username_rv;
-
     ksql_stmt_alloc(sql, &select_username_stmt, NULL, STMT_SELECT_USER);
     ksql_bind_str(select_username_stmt, 0, pusername->parsed.s);
+
+    enum ksqlc select_username_rv;
     select_username_rv = ksql_stmt_step(select_username_stmt);
     ksql_stmt_free(select_username_stmt);
 
@@ -201,7 +200,7 @@ static enum register_state process_register_form(struct kreq *req) {
         ksql_free(sql);
         return REG_FAILURE;
     } else if (select_username_rv != KSQL_DONE) {
-        flash("Database error", MSG_TYPE_DANGER);
+        flash("Unknown database error", MSG_TYPE_DANGER);
         ksql_free(sql);
         return REG_FAILURE;
     }
@@ -209,10 +208,10 @@ static enum register_state process_register_form(struct kreq *req) {
     /* Check if email already taken */
 
     struct ksqlstmt *select_email_stmt;
-    enum ksqlc select_email_rv;
-
     ksql_stmt_alloc(sql, &select_email_stmt, NULL, STMT_SELECT_EMAIL);
     ksql_bind_str(select_email_stmt, 0, pemail->parsed.s);
+
+    enum ksqlc select_email_rv;
     select_email_rv = ksql_stmt_step(select_email_stmt);
     ksql_stmt_free(select_email_stmt);
 
@@ -221,7 +220,7 @@ static enum register_state process_register_form(struct kreq *req) {
         ksql_free(sql);
         return REG_FAILURE;
     } else if (select_email_rv != KSQL_DONE) {
-        flash("Database error", MSG_TYPE_DANGER);
+        flash("Unknown database error", MSG_TYPE_DANGER);
         ksql_free(sql);
         return REG_FAILURE;
     }
@@ -230,7 +229,7 @@ static enum register_state process_register_form(struct kreq *req) {
 
     char *hashed = hash_password_alloc(ppassword->parsed.s);
     if (hashed == NULL) {
-        flash("Error hashing password", MSG_TYPE_DANGER);
+        fprintf(stderr, "Error hashing password\n");
         ksql_free(sql);
         return REG_FAILURE;
     }

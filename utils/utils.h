@@ -7,7 +7,7 @@
 
 #include "flash.h"
 #include "resp.h"
-#include "hash.h"
+#include "crypto.h"
 #include "storage.h"
 #include "session.h"
 
