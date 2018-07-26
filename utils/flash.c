@@ -4,6 +4,7 @@
 
 #include "flash.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -21,39 +22,40 @@ struct message {
     enum msg_type type;
 };
 
-struct message *message_queue = NULL;
+static struct message *messages = NULL;
 
-extern bool flash(const char *msg, const enum msg_type type) {
+extern void flash(const char *msg, const enum msg_type type) {
     struct message *message;
     if ((message = calloc(1, sizeof *message)) == NULL) {
-        return false;
+        perror("calloc");
+        exit(EXIT_FAILURE);
     }
 
     char *msg_data;
     if ((msg_data = strdup(msg)) == NULL) {
         free(message);
-        return false;
+        perror("strdup");
+        exit(EXIT_FAILURE);
     }
 
-    message->next = message_queue;
+    message->next = messages;
     message->msg_data = msg_data;
     message->type = type;
-    message_queue = message;
-    return true;
+    messages = message;
 }
 
 extern void get_flashed_messages(struct khtmlreq *htmlreq) {
     size_t pos = khtml_elemat(htmlreq);
 
     struct message *pmessage;
-    while ((pmessage = message_queue) != NULL) {
+    while ((pmessage = messages) != NULL) {
         khtml_attr(htmlreq, KELEM_P,
                    KATTR_CLASS, msg_class[pmessage->type],
                    KATTR__MAX);
         khtml_puts(htmlreq, pmessage->msg_data);
         khtml_closeelem(htmlreq, 1);
 
-        message_queue = pmessage->next;
+        messages = pmessage->next;
         free(pmessage->msg_data);
         free(pmessage);
     }

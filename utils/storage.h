@@ -8,8 +8,7 @@
 #include <hiredis/hiredis.h>
 
 
-extern void set_value_integer(const char *key_prefix, const char *key,
-                              long long value, unsigned long long expire);
+extern void set_value_integer(const char *key_prefix, const char *key, long long value, unsigned long long expire);
 
 extern struct redisReply *get_value(const char *key_prefix, const char *key);
 

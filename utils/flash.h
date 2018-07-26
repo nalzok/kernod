@@ -12,7 +12,6 @@
 #include <kcgi.h>
 #include <kcgihtml.h>
 #include <stddef.h>
-#include <stdbool.h>
 
 
 enum msg_type {
@@ -23,9 +22,7 @@ enum msg_type {
     MSG_TYPE__MAX
 };
 
-extern struct message *message_queue;
-
-extern bool flash(const char *msg, enum msg_type type);
+extern void flash(const char *msg, enum msg_type type);
 
 extern void get_flashed_messages(struct khtmlreq *htmlreq);
 

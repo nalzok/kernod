@@ -5,10 +5,10 @@
 #ifndef KERNOD_UTILS_H
 #define KERNOD_UTILS_H
 
+#include "crypto.h"
 #include "flash.h"
 #include "resp.h"
-#include "crypto.h"
-#include "storage.h"
 #include "session.h"
+#include "storage.h"
 
 #endif //KERNOD_UTILS_H

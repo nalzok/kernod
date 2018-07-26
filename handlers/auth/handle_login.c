@@ -7,8 +7,12 @@
 #include "../../config.h"
 
 #include <ksql.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <limits.h>
 
 
 enum login_state {
@@ -108,7 +112,7 @@ static void insert_login_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "text",
                KATTR_ID, "username",
-               KATTR_NAME, key_cookies[KEY_USERNAME].name,
+               KATTR_NAME, key_and_cookies[KEY_USERNAME].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
@@ -119,7 +123,7 @@ static void insert_login_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "password",
                KATTR_ID, "password",
-               KATTR_NAME, key_cookies[KEY_PASSWORD].name,
+               KATTR_NAME, key_and_cookies[KEY_PASSWORD].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
@@ -130,7 +134,7 @@ static void insert_login_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "checkbox",
                KATTR_ID, "remember-me",
-               KATTR_NAME, key_cookies[KEY_REMEMBER_ME].name,
+               KATTR_NAME, key_and_cookies[KEY_REMEMBER_ME].name,
                KATTR__MAX);
 
     khtml_elem(htmlreq, KELEM_P);
@@ -248,7 +252,7 @@ static enum login_state process_login_form(struct kreq *req) {
     char time_buffer[30];
     khttp_head(req, kresps[KRESP_SET_COOKIE],
                "%s=%s; Path=/; expires=%s",
-               key_cookies[COOKIE_SESSION_ID].name,
+               key_and_cookies[COOKIE_SESSION_ID].name,
                session_id,
                kutil_epoch2str(time(NULL) + KERNOD_SESSION_EXPIRE_SECONDS,
                                time_buffer, sizeof time_buffer));

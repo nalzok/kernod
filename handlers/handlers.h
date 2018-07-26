@@ -8,5 +8,6 @@
 #include "auth/handle_login.h"
 #include "auth/handle_register.h"
 #include "index/handle_index.h"
+#include "post/handle_posts.h"
 
 #endif //KERNOD_HANDLERS_H

@@ -2,7 +2,12 @@
 // Created by 孙庆耀 on 2018/7/19.
 //
 
+#include "crypto.h"
 #include "../config.h"
+
+#include <sodium.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 

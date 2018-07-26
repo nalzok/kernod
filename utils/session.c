@@ -7,8 +7,12 @@
 #include "../utils/utils.h"
 
 #include <ksql.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <limits.h>
 
 
 enum session_stmt {
@@ -24,13 +28,13 @@ static const char *const stmts[STMT__MAX] = {
 struct session_t session = {NULL};
 
 
-extern enum session_init_state populate_session(struct kreq *req) {
+extern enum populate_session_state populate_session(struct kreq *req) {
 
     /* Check if session ID is present in cookie */
 
     struct kpair *psession_id = req->cookiemap[COOKIE_SESSION_ID];
     if (psession_id == NULL) {
-        return SESSION_INIT_FAILURE;
+        return POPULATE_SESSION_FAILURE;
     }
 
     /* Allocate memory */
@@ -38,7 +42,7 @@ extern enum session_init_state populate_session(struct kreq *req) {
     session.user = calloc(1, sizeof *(session.user));
     if (session.user == NULL) {
         free_session();
-        return SESSION_INIT_FAILURE;
+        return POPULATE_SESSION_FAILURE;
     }
 
     /* Get user_id from Redis */
@@ -47,7 +51,7 @@ extern enum session_init_state populate_session(struct kreq *req) {
     if (reply == NULL || reply->type != REDIS_REPLY_STRING) {
         freeReplyObject(reply);
         free_session();
-        return SESSION_INIT_FAILURE;
+        return POPULATE_SESSION_FAILURE;
     }
 
     session.user->user_id = strtoimax(reply->str, NULL, 10);
@@ -79,7 +83,7 @@ extern enum session_init_state populate_session(struct kreq *req) {
         ksql_stmt_free(select_user_data_stmt);
         ksql_free(sql);
         free_session();
-        return SESSION_INIT_FAILURE;
+        return POPULATE_SESSION_FAILURE;
     }
 
     const char *username_volatile, *email_volatile, *join_ts_volatile;
@@ -98,17 +102,17 @@ extern enum session_init_state populate_session(struct kreq *req) {
         || session.user->email == NULL
         || session.user->join_ts == NULL) {
         free_session();
-        return SESSION_INIT_FAILURE;
+        return POPULATE_SESSION_FAILURE;
     }
 
-    return SESSION_INIT_SUCCESS;
+    return POPULATE_SESSION_SUCCESS;
 }
 
 extern void free_session(void) {
     if (session.user != NULL) {
-        free(session.user->username);
-        free(session.user->email);
-        free(session.user->join_ts);
+        free((void *) session.user->username);
+        free((void *) session.user->email);
+        free((void *) session.user->join_ts);
     }
     free(session.user);
     session = (struct session_t) {NULL};

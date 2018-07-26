@@ -5,6 +5,9 @@
 #include "storage.h"
 #include "../config.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+
 
 extern void set_value_integer(const char *key_prefix, const char *key,
                               long long value, unsigned long long expire) {
@@ -13,17 +16,18 @@ extern void set_value_integer(const char *key_prefix, const char *key,
     if (cxt == NULL || cxt->err) {
         if (cxt) {
             fprintf(stderr, "Redis error: %s\n", cxt->errstr);
-            // handle error
         } else {
             fprintf(stderr, "Can't allocate redis context\n");
         }
-        return;
+        exit(EXIT_FAILURE);
     }
 
     redisReply *reply;
     reply = redisCommand(cxt, "SET %s:%s %lld EX %llu", key_prefix, key, value, expire);
     if (reply->type == REDIS_REPLY_ERROR) {
         fprintf(stderr, "Redis error: %s\n", reply->str);
+        freeReplyObject(reply);
+        exit(EXIT_FAILURE);
     }
     freeReplyObject(reply);
 
@@ -36,11 +40,10 @@ extern struct redisReply *get_value(const char *key_prefix, const char *key) {
     if (cxt == NULL || cxt->err) {
         if (cxt) {
             fprintf(stderr, "Redis error: %s\n", cxt->errstr);
-            // handle error
         } else {
             fprintf(stderr, "Can't allocate redis context\n");
         }
-        return NULL;
+        exit(EXIT_FAILURE);
     }
 
     redisReply *reply;
@@ -48,10 +51,11 @@ extern struct redisReply *get_value(const char *key_prefix, const char *key) {
     if (reply->type == REDIS_REPLY_ERROR) {
         fprintf(stderr, "Redis error: %s\n", reply->str);
         freeReplyObject(reply);
-        return NULL;
+        exit(EXIT_FAILURE);
     }
 
     redisFree(cxt);
 
+    /* Remember to call freeReplyObject later from the caller */
     return reply;
 }

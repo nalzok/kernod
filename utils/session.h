@@ -12,9 +12,9 @@
 #include <kcgi.h>
 
 
-enum session_init_state {
-    SESSION_INIT_SUCCESS,
-    SESSION_INIT_FAILURE
+enum populate_session_state {
+    POPULATE_SESSION_SUCCESS,
+    POPULATE_SESSION_FAILURE
 };
 
 struct session_t {
@@ -23,12 +23,12 @@ struct session_t {
 
 struct user_t {
     int64_t user_id;
-    char *username;
-    char *email;
-    char *join_ts;
+    const char *username;
+    const char *email;
+    const char *join_ts;
 };
 
-extern enum session_init_state populate_session(struct kreq *req);
+extern enum populate_session_state populate_session(struct kreq *req);
 
 extern const struct user_t *current_user(void);
 

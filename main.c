@@ -1,6 +1,17 @@
+//
+// Created by 孙庆耀 on 2018/7/10.
+//
+
 #include "handlers/handlers.h"
 #include "utils/utils.h"
 #include "config.h"
+
+#include <sys/types.h> /* size_t, ssize_t */
+#include <stdarg.h> /* va_list */
+#include <stddef.h> /* NULL */
+#include <stdint.h> /* int64_t */
+#include <kcgi.h>
+#include <stdlib.h>
 
 
 static enum khttp sanitise(struct kreq *req);
@@ -12,7 +23,7 @@ int main(void) {
     struct kfcgi *fcgi;
 
     /* Initialise a FastCGI context */
-    if (khttp_fcgi_init(&fcgi, key_cookies, KEY_COOKIE__MAX,
+    if (khttp_fcgi_init(&fcgi, key_and_cookies, KEY_AND_COOKIE__MAX,
                         pages, PAGE__MAX, PAGE_INDEX) != KCGI_OK) {
         return EXIT_FAILURE;
     }
@@ -61,6 +72,8 @@ static enum khttp dispatch(struct kreq *req) {
             return handle_login(req);
         case PAGE_REGISTER:
             return handle_register(req);
+        case PAGE_POSTS:
+            return handle_posts(req);
         default:
             return KHTTP_404;
     }

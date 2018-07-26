@@ -7,6 +7,7 @@
 #include "../../config.h"
 
 #include <ksql.h>
+#include <stdio.h>
 #include <string.h>
 
 
@@ -94,7 +95,7 @@ static void insert_register_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "text",
                KATTR_ID, "username",
-               KATTR_NAME, key_cookies[KEY_USERNAME].name,
+               KATTR_NAME, key_and_cookies[KEY_USERNAME].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
@@ -105,7 +106,7 @@ static void insert_register_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "text",
                KATTR_ID, "email",
-               KATTR_NAME, key_cookies[KEY_EMAIL].name,
+               KATTR_NAME, key_and_cookies[KEY_EMAIL].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
@@ -116,7 +117,7 @@ static void insert_register_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "password",
                KATTR_ID, "password",
-               KATTR_NAME, key_cookies[KEY_PASSWORD].name,
+               KATTR_NAME, key_and_cookies[KEY_PASSWORD].name,
                KATTR__MAX);
 
     khtml_attr(htmlreq, KELEM_LABEL,
@@ -127,7 +128,7 @@ static void insert_register_form(struct khtmlreq *htmlreq) {
     khtml_attr(htmlreq, KELEM_INPUT,
                KATTR_TYPE, "password",
                KATTR_ID, "password2",
-               KATTR_NAME, key_cookies[KEY_PASSWORD2].name,
+               KATTR_NAME, key_and_cookies[KEY_PASSWORD2].name,
                KATTR__MAX);
 
     khtml_elem(htmlreq, KELEM_P);
