@@ -52,6 +52,7 @@ static const bool require_login[PAGE__MAX] = {
 enum key_and_cookie {
 
     /* form inputs */
+
     KEY_USERNAME,
     KEY_EMAIL,
     KEY_PASSWORD,
@@ -60,6 +61,7 @@ enum key_and_cookie {
     KEY_PAGE,
 
     /* cookies */
+
             COOKIE_SESSION_ID,
     COOKIE_PER_PAGE,
 
@@ -69,16 +71,18 @@ enum key_and_cookie {
 static const struct kvalid key_and_cookies[KEY_AND_COOKIE__MAX] = {
 
         /* form inputs */
+
         {kvalid_stringne, "username"},
-        {kvalid_email, "email"},
+        {kvalid_email,    "email"},
         {kvalid_stringne, "password"},
         {kvalid_stringne, "password2"},
         {kvalid_stringne, "remember-me"},
-        {kvalid_uint, "page"},
+        {kvalid_uint,     "page"},
 
         /* cookies */
+
         {kvalid_stringne, "session_id"},
-        {kvalid_uint, "per-page"},
+        {kvalid_uint,     "per-page"},
 };
 
 #endif //KERNOD_CONFIG_H

@@ -51,7 +51,7 @@ extern enum khttp handle_posts(struct kreq *req) {
 
     int64_t page = 1;
     struct kpair *ppage;
-    if ((ppage = req->cookiemap[COOKIE_PER_PAGE]) != NULL) {
+    if ((ppage = req->fieldmap[KEY_PAGE]) != NULL) {
         page = ppage->parsed.i;
     }
 
